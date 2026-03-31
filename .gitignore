@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Mac
+.DS_Store
+
+# Backup
+*_backup_*.py
+
+# Data（不上传数据库）
+data/
+
+# Large files
+*.epub
+*.mdx
+*.pdf

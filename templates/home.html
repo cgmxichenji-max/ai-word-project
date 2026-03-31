@@ -1,0 +1,1864 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>主页面</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+</head>
+<body>
+  <div style="position: fixed; top: 18px; right: 18px; z-index: 1000; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; max-width: 520px;">
+    <button
+      id="tts-toggle-global-btn"
+      type="button"
+      aria-label="切换朗读"
+      title="切换朗读"
+      style="padding: 10px 16px; border-radius: 12px; border: 1px solid #dbe4f3; background: #eff6ff; color: #1e3a8a; font-size: 14px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;"
+    >
+      <span id="tts-global-text">朗读开</span>
+    </button>
+    <div style="padding: 10px 12px; border-radius: 12px; background: #eff6ff; border: 1px solid #dbe4f3; color: #1e3a8a; font-size: 14px; line-height: 1.4;">
+      <strong>用户名：</strong>{{ username }}
+    </div>
+    <div style="padding: 10px 12px; border-radius: 12px; background: #eff6ff; border: 1px solid #dbe4f3; color: #1e3a8a; font-size: 14px; line-height: 1.4;">
+      <strong>学习数：</strong>{{ target_word_count }}
+    </div>
+    <a class="logout" href="{{ url_for('logout') }}">退出登录</a>
+  </div>
+
+  <div id="global-selector-anchor" style="position: fixed; top: 68px; right: 0; z-index: 999; width: 220px; display: flex; justify-content: flex-end;"></div>
+
+  <div id="global-direction-anchor" style="position: fixed; inset: 0; z-index: 850; pointer-events: none; display: none;">
+    <div
+      id="direction-preview-card"
+      data-mode=""
+      class="direction-nav-btn"
+      style="position: absolute; top: 50%; left: 50%; width: 360px; min-height: 220px; padding: 14px; border: 1px solid #dde6f2; border-radius: 42px; background: #eef2f7; box-shadow: 0 30px 68px rgba(15, 23, 42, 0.16); display: flex; align-items: stretch; justify-content: stretch; text-align: left; cursor: pointer; opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -50%) scale(0.18); transition: opacity 0.18s ease-out, transform 0.18s ease-out, box-shadow 0.18s ease-out; will-change: transform, opacity; box-sizing: border-box;"
+    >
+      <div id="direction-preview-inner" style="width: 100%; min-height: 188px; border: 1px solid #d7e5f5; border-radius: 30px; background: #ffffff; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 12px; padding: 26px 28px; box-sizing: border-box; box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);">
+        <div id="direction-preview-title" style="font-size: 38px; font-weight: 800; color: #0f172a; line-height: 1.12;"></div>
+        <div id="direction-preview-subtitle" style="font-size: 17px; font-weight: 600; color: #64748b; line-height: 1.6;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="grid" style="grid-template-columns: 1fr;">
+      <section class="card" style="width: 100%; min-height: 320px; display: flex; align-items: center; justify-content: center; background: #ffffff; position: relative; overflow: hidden;">
+        <div id="start-mode-panel" style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+            <button
+              id="start-random-btn"
+              type="button"
+              style="padding: 16px 28px; border: 1px solid #dbe4f3; border-radius: 16px; background: #eff6ff; color: #1d4ed8; font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);"
+            >
+              随机开始
+            </button>
+            <button
+              id="show-manual-panel-btn"
+              type="button"
+              data-queue-locked="{{ 'true' if queue_locked else 'false' }}"
+              {% if queue_locked %}disabled{% endif %}
+              style="padding: 16px 28px; border: 1px solid #dbe4f3; border-radius: 16px; background: {% if queue_locked %}#f8fafc{% else %}#ffffff{% endif %}; color: {% if queue_locked %}#94a3b8{% else %}#334155{% endif %}; font-size: 18px; font-weight: 700; cursor: {% if queue_locked %}not-allowed{% else %}pointer{% endif %}; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);"
+            >
+              手工添加
+            </button>
+          </div>
+
+          {% if queue_locked %}
+            <div id="manual-lock-hint" style="font-size: 14px; color: #64748b; text-align: center; line-height: 1.7;">
+              今天已经开始学习，手工添加已关闭。
+            </div>
+          {% else %}
+            <div id="manual-lock-hint" style="display: none;"></div>
+          {% endif %}
+
+          <div id="manual-add-panel" style="display: none; width: min(92%, 560px); padding: 18px; border: 1px solid #dbe4f3; border-radius: 18px; background: #f8fbff; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);">
+            <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">手工添加单词</div>
+
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
+              <input
+                id="manual-word-input"
+                type="text"
+                placeholder="请输入词库中已有的单词"
+                style="flex: 1 1 240px; min-width: 220px; padding: 12px 14px; border: 1px solid #dbe4f3; border-radius: 12px; background: #ffffff; color: #111827; font-size: 15px; outline: none;"
+              >
+              <button
+                id="manual-add-word-btn"
+                type="button"
+                style="padding: 12px 18px; border: 1px solid #dbe4f3; border-radius: 12px; background: #eff6ff; color: #1d4ed8; font-size: 15px; font-weight: 700; cursor: pointer;"
+              >
+                添加
+              </button>
+            </div>
+
+            <div id="manual-add-message" style="min-height: 22px; color: #64748b; font-size: 14px; margin-bottom: 12px;">当前只做手工列表骨架，后面再接词库查询和正式入库。</div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; flex-wrap: wrap;">
+              <div style="font-size: 14px; color: #334155; font-weight: 600;">已选单词：<span id="manual-selected-count">0</span> / {{ target_word_count }}</div>
+              <button
+                id="manual-clear-btn"
+                type="button"
+                style="padding: 8px 12px; border: 1px solid #dbe4f3; border-radius: 10px; background: #ffffff; color: #475569; font-size: 14px; cursor: pointer;"
+              >
+                清空
+              </button>
+            </div>
+
+            <div id="manual-selected-list" style="display: grid; gap: 8px; max-height: 180px; overflow-y: auto; margin-bottom: 14px;"></div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;">
+              <button
+                id="manual-cancel-btn"
+                type="button"
+                style="padding: 12px 18px; border: 1px solid #dbe4f3; border-radius: 12px; background: #ffffff; color: #475569; font-size: 15px; font-weight: 700; cursor: pointer;"
+              >
+                取消
+              </button>
+              <button
+                id="manual-start-btn"
+                type="button"
+                style="padding: 12px 18px; border: 1px solid #dbe4f3; border-radius: 12px; background: #eff6ff; color: #1d4ed8; font-size: 15px; font-weight: 700; cursor: pointer;"
+              >
+                开始本次学习
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="study-stage" style="display: none; width: 100%; min-height: 220px; align-items: center; justify-content: center; position: relative; overflow: visible;">
+
+          <div id="main-card-wrap" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 100%; position: relative; padding: 0; overflow: visible; z-index: 2;">
+
+            <div id="main-card-toolbar" style="display: none; width: min(92%, 900px); align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; padding: 6px 12px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button
+                  id="mode-back-btn"
+                  type="button"
+                  style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;"
+                >
+                  返回单词
+                </button>
+                <button
+                  id="mode-edit-btn"
+                  type="button"
+                  data-editing="false"
+                  style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;"
+                >
+                  修改内容
+                </button>
+              </div>
+              <div id="main-card-mode-title" style="font-size: 14px; font-weight: 700; color: #334155;">当前：主卡</div>
+            </div>
+
+            <div id="info-submenu" style="display: none; width: min(92%, 900px); justify-content: center; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="info-submenu-btn" data-info-mode="word_root" style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;">词根</button>
+              <button type="button" class="info-submenu-btn" data-info-mode="affix" style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;">词缀</button>
+              <button type="button" class="info-submenu-btn" data-info-mode="history" style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;">背景</button>
+              <button type="button" class="info-submenu-btn" data-info-mode="forms" style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;">变形</button>
+              <button type="button" class="info-submenu-btn" data-info-mode="memory_tip" style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;">记忆</button>
+              <button type="button" class="info-submenu-btn" data-info-mode="story" style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;">故事</button>
+            </div>
+
+            <div id="main-card-flip" style="position: relative; width: min(92%, 900px); min-height: 300px; transform-style: preserve-3d; transition: transform 0.45s ease; cursor: pointer; perspective: 1200px; z-index: 3;">
+              <div id="main-card-front" style="backface-visibility: hidden; display: flex; align-items: center; justify-content: center; font-size: 72px; font-weight: 700; color: #111827; line-height: 1.15; text-align: center; background: transparent; width: 100%; min-height: 300px;">
+                <div id="main-word">{% if items and items|length > 0 %}{{ items[0].word }}{% else %}暂无单词{% endif %}</div>
+              </div>
+              <div id="main-card-back" style="position: absolute; inset: 0; backface-visibility: hidden; transform: rotateY(180deg); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; color: #334155; line-height: 1.95; text-align: left; background: transparent; width: 100%; min-height: 300px; padding: 28px 38px; overflow-y: auto;">
+                <div id="main-meaning" style="width: 100%; max-width: 760px; white-space: normal; word-break: break-word; overflow-wrap: anywhere;">{% if items and items|length > 0 %}{{ items[0].meaning if items[0].meaning else '暂无词义' }}{% else %}暂无词义{% endif %}</div>
+              </div>
+            </div>
+
+            <div id="main-card-alt" style="display: none; width: min(92%, 900px); min-height: 300px; padding: 0; border-radius: 36px; background: radial-gradient(circle at top, rgba(224, 237, 255, 0.65), rgba(245, 248, 255, 0.85)), linear-gradient(180deg, rgba(245, 248, 255, 0.9), rgba(255, 255, 255, 0.95)); box-shadow: 0 20px 36px rgba(15, 23, 42, 0.08); position: relative; z-index: 3;">
+              <div id="main-card-alt-shell" style="width: 100%; min-height: 300px; padding: 28px 30px 22px; display: flex; flex-direction: column; gap: 16px;">
+                <div id="main-card-alt-panel" style="flex: 1; position: relative; background: rgba(255, 255, 255, 0.92); border-radius: 24px; padding: 20px 24px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);">
+                  <textarea
+                    id="main-card-alt-editor"
+                    readonly
+                    rows="6"
+                    style="width: 100%; height: 100%; border: none; background: transparent; resize: none; font: inherit; font-size: 18px; line-height: 1.9; color: #0f172a; outline: none; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;"
+                  >请选择一个功能。</textarea>
+                  <div id="dictation-panel" style="display: none; width: 100%; min-height: 100%; align-items: center; justify-content: center; flex-direction: column; gap: 16px;">
+                    <div id="dictation-prompt" style="font-size: 16px; color: #475569; line-height: 1.7; text-align: center; max-width: 92%;">
+                      请输入你听到的单词，输入完成后按回车自动判断。
+                    </div>
+                    <input
+                      id="dictation-input"
+                      type="text"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      aria-label="默写输入"
+                      style="width: min(420px, 92%); min-height: 56px; border: 1px solid #cbd5e1; border-radius: 18px; background: #ffffff; color: #0f172a; font-size: 22px; font-weight: 600; text-align: center; outline: none; box-shadow: inset 0 1px 0 rgba(255,255,255,0.85); padding: 10px 18px;"
+                    >
+                  </div>
+                </div>
+                <div id="main-card-alt-footer" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div id="main-card-alt-tip" style="font-size: 13px; color: #475569; line-height: 1.6;">默认只读；点击“修改内容”后进入可编辑状态。</div>
+                  <div id="dictation-feedback" style="display: none; font-size: 13px; color: #475569; line-height: 1.6; min-height: 1.6em;"></div>
+                  <div id="main-card-alt-actions" style="display: flex; align-items: center; gap: 8px;"></div>
+                </div>
+              </div>
+            </div>
+
+            <div id="main-card-hint" style="font-size: 13px; color: #94a3b8; line-height: 1.6; text-align: center; user-select: none; margin-top: 8px; opacity: 0.72;">
+              鼠标在页面浅蓝区域朝上下左右移动时显示对应卡片；双击主卡或浅蓝区域可返回单词状态
+            </div>
+          </div>
+          <div id="main-word-meta" style="display: none;"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  {% if items and items|length > 0 %}
+    <div id="floating-selector" style="display: none; width: 220px; padding: 18px 14px; border-radius: 22px 0 0 22px; background: rgba(255,255,255,0.94); border: 1px solid #dbe4f3; box-shadow: 0 14px 36px rgba(15, 23, 42, 0.10); backdrop-filter: blur(10px);">
+      <div id="selector-window" style="position: relative; height: 320px; overflow-y: auto; padding: 96px 0 48px 0; scrollbar-width: thin;">
+        <div id="word-queue" style="display: grid; gap: 10px;">
+          {% for item in items if item.word and item.word|string|trim != '' %}
+            <button
+              type="button"
+              class="queue-word-btn{% if loop.first %} is-active{% endif %}"
+              data-index="{{ loop.index0 }}"
+              data-word="{{ item.word|trim }}"
+              data-meaning="{{ item.meaning|default('', true)|replace('\n', ' ')|replace('\r', ' ')|e }}"
+              style="padding: 10px 14px; min-height: 44px; border-radius: 14px; background: {% if loop.first %}#e0edff{% else %}#f8fbff{% endif %}; border: 1px solid #dbe4f3; color: #111827; text-align: left; cursor: pointer; font: inherit; transition: transform 0.18s ease, opacity 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;"
+            >
+              {{ item.word|trim }}
+            </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <script>
+    (function () {
+      const startModePanel = document.getElementById('start-mode-panel');
+      const startRandomBtn = document.getElementById('start-random-btn');
+      const showManualPanelBtn = document.getElementById('show-manual-panel-btn');
+      const manualLockHint = document.getElementById('manual-lock-hint');
+      const manualAddPanel = document.getElementById('manual-add-panel');
+      const manualWordInput = document.getElementById('manual-word-input');
+      const manualAddWordBtn = document.getElementById('manual-add-word-btn');
+      const manualAddMessage = document.getElementById('manual-add-message');
+      const manualSelectedCount = document.getElementById('manual-selected-count');
+      const manualSelectedList = document.getElementById('manual-selected-list');
+      const manualClearBtn = document.getElementById('manual-clear-btn');
+      const manualCancelBtn = document.getElementById('manual-cancel-btn');
+      const manualStartBtn = document.getElementById('manual-start-btn');
+      const targetWordCount = {{ target_word_count|int }};
+      const studyStage = document.getElementById('study-stage');
+      const mainWord = document.getElementById('main-word');
+      const mainMeaning = document.getElementById('main-meaning');
+      const mainCardFlip = document.getElementById('main-card-flip');
+      const mainCardFront = document.getElementById('main-card-front');
+      const mainCardBack = document.getElementById('main-card-back');
+      const mainCardAlt = document.getElementById('main-card-alt');
+      const mainCardToolbar = document.getElementById('main-card-toolbar');
+      const mainCardModeTitle = document.getElementById('main-card-mode-title');
+      const modeBackBtn = document.getElementById('mode-back-btn');
+      const modeEditBtn = document.getElementById('mode-edit-btn');
+      const mainCardAltPanel = document.getElementById('main-card-alt-panel');
+      const mainCardAltEditor = document.getElementById('main-card-alt-editor');
+      const mainCardAltTip = document.getElementById('main-card-alt-tip');
+      const dictationPanel = document.getElementById('dictation-panel');
+      const dictationInput = document.getElementById('dictation-input');
+      const dictationFeedback = document.getElementById('dictation-feedback');
+      const mainCardAltActions = document.getElementById('main-card-alt-actions');
+      const infoSubmenu = document.getElementById('info-submenu');
+      const infoSubmenuButtons = Array.from(document.querySelectorAll('.info-submenu-btn'));
+      const directionPreviewCard = document.getElementById('direction-preview-card');
+      const directionPreviewTitle = document.getElementById('direction-preview-title');
+      const directionPreviewSubtitle = document.getElementById('direction-preview-subtitle');
+      const mainMeta = document.getElementById('main-word-meta');
+      const globalSelectorAnchor = document.getElementById('global-selector-anchor');
+      const globalDirectionAnchor = document.getElementById('global-direction-anchor');
+      const floatingSelector = document.getElementById('floating-selector');
+      const wordQueue = document.getElementById('word-queue');
+      const selectorWindow = document.getElementById('selector-window');
+      const ttsToggleBtn = document.getElementById('tts-toggle-global-btn');
+      const ttsGlobalText = document.getElementById('tts-global-text');
+      const mainCardWrap = document.getElementById('main-card-wrap');
+      const studyCard = document.querySelector('.card');
+      const pageWrap = document.querySelector('.wrap');
+      const directionNavButtons = directionPreviewCard ? [directionPreviewCard] : [];
+
+      let ttsEnabled = true;
+      let autoSpeakTimer = null;
+      let autoSpeakDelayTimer = null;
+      let lastSpokenWord = '';
+      let manualActiveButton = null;
+      let studyStarted = false;
+      let manualSelectedWords = [];
+      let queueButtons = [];
+      let cardShowingMeaning = false;
+      let currentCardMode = 'word';
+      let altEditing = false;
+      let currentExampleIndex = 0;
+      let currentStoryIndex = 0;
+      let currentExampleRevealed = false;
+      let currentDictationWord = '';
+      let currentDictationInput = '';
+      let currentDictationLocked = false;
+      let activeDirectionMode = '';
+      const directionCardMap = {
+        examples: {
+          title: '例句',
+          subtitle: '看一句真实用法'
+        },
+        dialogue: {
+          title: '对话',
+          subtitle: '进入互动练习'
+        },
+        dictation: {
+          title: '默写',
+          subtitle: '用词义回想单词'
+        },
+        info: {
+          title: '资料',
+          subtitle: '查看词根词缀等'
+        }
+      };
+      const modeTitleMap = {
+        word: '当前：主卡',
+        examples: '当前：例句',
+        dialogue: '当前：对话',
+        dictation: '当前：默写',
+        info: '当前：资料',
+        word_root: '当前：词根',
+        affix: '当前：词缀',
+        history: '当前：背景',
+        forms: '当前：变形',
+        memory_tip: '当前：记忆',
+        story: '当前：故事'
+      };
+      let navButtonsVisible = false;
+      let navHideTimer = null;
+      let directionVisibilityTimer = null;
+      let lastShownDirectionMode = '';
+
+      function setDirectionCardPosition(mode) {
+        if (!directionPreviewCard || !studyCard) {
+          return;
+        }
+
+        const cardRect = studyCard.getBoundingClientRect();
+        const previewWidth = 360;
+        const previewHeight = 220;
+        const gap = 102;
+        const viewportPadding = 18;
+
+        let left = cardRect.left + cardRect.width / 2 - previewWidth / 2;
+        let top = cardRect.top + cardRect.height / 2 - previewHeight / 2;
+        let activeTransform = 'translate(-50%, -50%) scale(1)';
+        let hiddenTransform = 'translate(-50%, -50%) scale(0.18)';
+
+        if (mode === 'examples') {
+          left = cardRect.left + cardRect.width / 2 - previewWidth / 2;
+          top = Math.max(viewportPadding, cardRect.top - previewHeight - gap);
+          activeTransform = 'translate(-50%, 0) scale(1)';
+          hiddenTransform = 'translate(-50%, 0) scale(0.18)';
+        } else if (mode === 'dialogue') {
+          left = Math.max(viewportPadding, cardRect.left - previewWidth - gap);
+          top = cardRect.top + cardRect.height / 2 - previewHeight / 2;
+          activeTransform = 'translate(0, -50%) scale(1)';
+          hiddenTransform = 'translate(0, -50%) scale(0.18)';
+        } else if (mode === 'dictation') {
+          left = Math.min(cardRect.right + gap, window.innerWidth - previewWidth - viewportPadding);
+          top = cardRect.top + cardRect.height / 2 - previewHeight / 2;
+          activeTransform = 'translate(0, -50%) scale(1)';
+          hiddenTransform = 'translate(0, -50%) scale(0.18)';
+        } else if (mode === 'info') {
+          left = cardRect.left + cardRect.width / 2 - previewWidth / 2;
+          top = Math.min(cardRect.bottom + gap, window.innerHeight - previewHeight - viewportPadding);
+          activeTransform = 'translate(-50%, 0) scale(1)';
+          hiddenTransform = 'translate(-50%, 0) scale(0.18)';
+        }
+
+        left = Math.max(viewportPadding, Math.min(left, window.innerWidth - previewWidth - viewportPadding));
+        top = Math.max(viewportPadding, Math.min(top, window.innerHeight - previewHeight - viewportPadding));
+
+        directionPreviewCard.style.left = left + 'px';
+        directionPreviewCard.style.top = top + 'px';
+        directionPreviewCard.style.right = 'auto';
+        directionPreviewCard.style.bottom = 'auto';
+        directionPreviewCard.dataset.activeTransform = activeTransform;
+        directionPreviewCard.dataset.hiddenTransform = hiddenTransform;
+      }
+
+      function updateDirectionCard(mode) {
+        activeDirectionMode = mode || '';
+
+        if (!directionPreviewCard) {
+          return;
+        }
+
+        if (!activeDirectionMode) {
+          directionPreviewCard.dataset.mode = '';
+          directionPreviewCard.style.top = '50%';
+          directionPreviewCard.style.left = '50%';
+          directionPreviewCard.style.right = '';
+          directionPreviewCard.style.bottom = '';
+          directionPreviewCard.dataset.activeTransform = 'translate(-50%, -50%) scale(1)';
+          directionPreviewCard.dataset.hiddenTransform = 'translate(-50%, -50%) scale(0.18)';
+          directionPreviewCard.style.transform = 'translate(-50%, -50%) scale(0.18)';
+          return;
+        }
+
+        const cardCopy = directionCardMap[activeDirectionMode] || directionCardMap.info;
+        directionPreviewCard.dataset.mode = activeDirectionMode;
+        if (directionPreviewTitle) {
+          directionPreviewTitle.textContent = cardCopy.title;
+        }
+        if (directionPreviewSubtitle) {
+          directionPreviewSubtitle.textContent = cardCopy.subtitle;
+        }
+        setDirectionCardPosition(activeDirectionMode);
+        directionPreviewCard.style.transform = directionPreviewCard.dataset.hiddenTransform || 'translate(-50%, -50%) scale(0.18)';
+      }
+
+      function detectDirectionMode(clientX, clientY) {
+        if (!mainCardFlip) {
+          return '';
+        }
+
+        const rect = mainCardFlip.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const dx = clientX - centerX;
+        const dy = clientY - centerY;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance < 90) {
+          return '';
+        }
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+          return dx > 0 ? 'dictation' : 'dialogue';
+        }
+
+        return dy > 0 ? 'info' : 'examples';
+      }
+
+      function setDirectionButtonsVisible(visible) {
+        navButtonsVisible = visible;
+
+        if (directionVisibilityTimer) {
+          window.clearTimeout(directionVisibilityTimer);
+          directionVisibilityTimer = null;
+        }
+
+        if (globalDirectionAnchor) {
+          globalDirectionAnchor.style.display = studyStarted ? 'block' : 'none';
+          globalDirectionAnchor.style.pointerEvents = 'none';
+        }
+
+        if (!directionPreviewCard) {
+          return;
+        }
+
+        const shouldShow = Boolean(visible && activeDirectionMode && studyStarted);
+
+        if (shouldShow) {
+          const activeTransform = directionPreviewCard.dataset.activeTransform || 'translate(-50%, -50%) scale(1)';
+          const hiddenTransform = directionPreviewCard.dataset.hiddenTransform || 'translate(-50%, -50%) scale(0.18)';
+
+          directionPreviewCard.style.visibility = 'visible';
+          directionPreviewCard.style.pointerEvents = 'auto';
+
+          if (lastShownDirectionMode !== activeDirectionMode) {
+            directionPreviewCard.style.opacity = '0';
+            directionPreviewCard.style.transform = hiddenTransform;
+            void directionPreviewCard.offsetWidth;
+            window.requestAnimationFrame(function () {
+              directionPreviewCard.style.opacity = '1';
+              directionPreviewCard.style.transform = activeTransform;
+            });
+          } else {
+            directionPreviewCard.style.opacity = '1';
+            directionPreviewCard.style.transform = activeTransform;
+          }
+
+          lastShownDirectionMode = activeDirectionMode;
+          return;
+        }
+
+        lastShownDirectionMode = '';
+
+        directionPreviewCard.style.opacity = '0';
+        directionPreviewCard.style.pointerEvents = 'none';
+        directionPreviewCard.style.transform = directionPreviewCard.dataset.hiddenTransform || 'translate(-50%, -50%) scale(0.18)';
+        directionVisibilityTimer = window.setTimeout(function () {
+          if (!navButtonsVisible) {
+            directionPreviewCard.style.visibility = 'hidden';
+          }
+        }, 320);
+      }
+
+      function scheduleHideDirectionButtons() {
+        if (navHideTimer) {
+          window.clearTimeout(navHideTimer);
+        }
+        navHideTimer = window.setTimeout(function () {
+          if (currentCardMode === 'word') {
+            setDirectionButtonsVisible(false);
+            updateDirectionCard('');
+          }
+        }, 420);
+      }
+
+      function showDirectionButtonsTemporarily(event) {
+        if (currentCardMode !== 'word' || !studyStarted) {
+          return;
+        }
+        if (!event) {
+          return;
+        }
+        if (navHideTimer) {
+          window.clearTimeout(navHideTimer);
+        }
+        const mode = detectDirectionMode(event.clientX, event.clientY);
+        if (!mode) {
+          setDirectionButtonsVisible(false);
+          updateDirectionCard('');
+          return;
+        }
+        updateDirectionCard(mode);
+        setDirectionCardPosition(mode);
+        setDirectionButtonsVisible(true);
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function parseDatasetList(value) {
+        if (!value) {
+          return [];
+        }
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+          return [];
+        }
+      }
+
+      function getCurrentWordData() {
+        if (manualActiveButton) {
+          return {
+            word: manualActiveButton.dataset.word || '',
+            meaning: manualActiveButton.dataset.meaning || '',
+            word_root: manualActiveButton.dataset.word_root || '',
+            affix: manualActiveButton.dataset.affix || '',
+            history: manualActiveButton.dataset.history || '',
+            forms: manualActiveButton.dataset.forms || '',
+            memory_tip: manualActiveButton.dataset.memory_tip || '',
+            examples: parseDatasetList(manualActiveButton.dataset.examples || ''),
+            stories: parseDatasetList(manualActiveButton.dataset.stories || '')
+          };
+        }
+        return {
+          word: (mainWord ? mainWord.textContent : '').trim(),
+          meaning: (mainMeaning ? mainMeaning.textContent : '').trim(),
+          word_root: '',
+          affix: '',
+          history: '',
+          forms: '',
+          memory_tip: '',
+          examples: [],
+          stories: []
+        };
+      }
+
+      function formatExampleItem(item) {
+        if (!item) {
+          return '暂无例句';
+        }
+        if (typeof item === 'string') {
+          return item;
+        }
+        const en = String(item.example_en || item.en || '').trim();
+        const zh = String(item.example_zh || item.zh || '').trim();
+        if (en && zh) {
+          return en + '\n\n' + zh;
+        }
+        return en || zh || '暂无例句';
+      }
+
+      function formatStoryItem(item) {
+        if (!item) {
+          return '暂无故事';
+        }
+        if (typeof item === 'string') {
+          return item;
+        }
+        const en = String(item.story_en || item.en || '').trim();
+        const zh = String(item.story_zh || item.zh || '').trim();
+        if (en && zh) {
+          return en + '\n\n' + zh;
+        }
+        return en || zh || '暂无故事';
+      }
+
+      function getCurrentSpeechText() {
+        const current = getCurrentWordData();
+
+        if (currentCardMode === 'examples') {
+          if (!current.examples.length) {
+            return '';
+          }
+          const safeIndex = Math.max(0, Math.min(currentExampleIndex, current.examples.length - 1));
+          const item = current.examples[safeIndex];
+          if (!item) {
+            return '';
+          }
+          if (typeof item === 'string') {
+            return String(item).trim();
+          }
+          return String(item.example_en || item.en || '').trim();
+        }
+
+        return String(current.word || '').trim();
+      }
+
+      function getDictationTargetWord() {
+        const current = getCurrentWordData();
+        return String(current.word || '').trim();
+      }
+
+      function setDictationFeedback(text, isCorrect) {
+        if (!dictationFeedback) {
+          return;
+        }
+        dictationFeedback.textContent = text || '';
+        if (!text) {
+          dictationFeedback.style.color = '#475569';
+          return;
+        }
+        dictationFeedback.style.color = isCorrect ? '#166534' : '#b45309';
+      }
+
+      function resetDictationState() {
+        currentDictationWord = getDictationTargetWord();
+        currentDictationInput = '';
+        currentDictationLocked = false;
+        if (dictationInput) {
+          dictationInput.value = '';
+          dictationInput.readOnly = false;
+          dictationInput.blur();
+        }
+        setDictationFeedback('', false);
+      }
+
+      function showDictationInterface() {
+        if (mainCardAltEditor) {
+          mainCardAltEditor.style.display = 'none';
+        }
+        if (dictationPanel) {
+          dictationPanel.style.display = 'flex';
+        }
+        if (mainCardAltTip) {
+          mainCardAltTip.style.display = 'none';
+        }
+        if (dictationFeedback) {
+          dictationFeedback.style.display = 'block';
+        }
+        if (mainCardAltActions) {
+          mainCardAltActions.innerHTML = '';
+        }
+        resetDictationState();
+        window.setTimeout(function () {
+          if (dictationInput) {
+            dictationInput.focus();
+            dictationInput.select();
+          }
+        }, 0);
+      }
+
+      function hideDictationInterface() {
+        if (mainCardAltEditor) {
+          mainCardAltEditor.style.display = 'block';
+        }
+        if (dictationPanel) {
+          dictationPanel.style.display = 'none';
+        }
+        if (mainCardAltTip) {
+          mainCardAltTip.style.display = 'block';
+        }
+        if (dictationFeedback) {
+          dictationFeedback.style.display = 'none';
+        }
+        currentDictationWord = '';
+        currentDictationInput = '';
+        currentDictationLocked = false;
+        if (dictationInput) {
+          dictationInput.value = '';
+          dictationInput.readOnly = false;
+        }
+        setDictationFeedback('', false);
+      }
+
+      function clearAutoSpeakTimers() {
+        if (autoSpeakTimer) {
+          window.clearTimeout(autoSpeakTimer);
+          autoSpeakTimer = null;
+        }
+        if (autoSpeakDelayTimer) {
+          window.clearTimeout(autoSpeakDelayTimer);
+          autoSpeakDelayTimer = null;
+        }
+      }
+
+      async function submitDictationAnswer() {
+        if (currentDictationLocked) {
+          return;
+        }
+
+        const targetWord = String(currentDictationWord || '').trim();
+        if (!targetWord) {
+          return;
+        }
+
+        currentDictationLocked = true;
+        if (dictationInput) {
+          dictationInput.readOnly = true;
+        }
+
+        const payload = {
+          word: targetWord,
+          answer: currentDictationInput
+        };
+
+        try {
+          const response = await fetch('/api/check-dictation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error('check dictation failed');
+          }
+
+          if (data.is_correct) {
+            setDictationFeedback('拼写正确', true);
+          } else {
+            setDictationFeedback('拼写错误，正确答案：' + String(data.correct_word || targetWord), false);
+          }
+          if (dictationInput) {
+            dictationInput.value = '';
+          }
+          currentDictationInput = '';
+          currentDictationLocked = false;
+          if (dictationInput) {
+            dictationInput.readOnly = false;
+          }
+          // TODO: 这里以后接“任务进度 +1”逻辑
+        } catch (error) {
+          setDictationFeedback('判定失败，请重试', false);
+          if (dictationInput) {
+            dictationInput.value = '';
+          }
+          currentDictationInput = '';
+          currentDictationLocked = false;
+          if (dictationInput) {
+            dictationInput.readOnly = false;
+          }
+        }
+      }
+
+      function handleDictationInputChange() {
+        if (!dictationInput || currentCardMode !== 'dictation' || currentDictationLocked) {
+          return;
+        }
+        currentDictationInput = String(dictationInput.value || '');
+      }
+
+      function getModeContent(mode) {
+        const current = getCurrentWordData();
+
+        if (mode === 'examples') {
+          if (!current.examples.length) {
+            return '暂无例句';
+          }
+          const safeIndex = Math.max(0, Math.min(currentExampleIndex, current.examples.length - 1));
+          currentExampleIndex = safeIndex;
+          if (!currentExampleRevealed) {
+            return '【例句 ' + (safeIndex + 1) + ' / ' + current.examples.length + '】\n\n点击显示本条例句';
+          }
+          return formatExampleItem(current.examples[safeIndex]);
+        }
+
+        if (mode === 'dialogue') {
+          return '【对话】（下一步接AI）';
+        }
+
+        if (mode === 'dictation') {
+          return '';
+        }
+
+        if (mode === 'info') {
+          return '请选择一个资料分类';
+        }
+
+        if (mode === 'word_root') {
+          return current.word_root || '暂无词根';
+        }
+
+        if (mode === 'affix') {
+          return current.affix || '暂无词缀';
+        }
+
+        if (mode === 'history') {
+          return current.history || '暂无背景';
+        }
+
+        if (mode === 'forms') {
+          return current.forms || '暂无变形';
+        }
+
+        if (mode === 'memory_tip') {
+          return current.memory_tip || '暂无记忆';
+        }
+
+        if (mode === 'story') {
+          if (!current.stories.length) {
+            return '暂无故事';
+          }
+          const safeIndex = Math.max(0, Math.min(currentStoryIndex, current.stories.length - 1));
+          currentStoryIndex = safeIndex;
+          return formatStoryItem(current.stories[safeIndex]);
+        }
+
+        return '';
+      }
+
+      function updateModeHeader(mode) {
+        if (mainCardModeTitle) {
+          mainCardModeTitle.textContent = modeTitleMap[mode] || '当前：主卡';
+        }
+      }
+
+      function updateInfoSubmenuActive(mode) {
+        infoSubmenuButtons.forEach(function (button) {
+          const active = button.dataset.infoMode === mode;
+          button.style.background = active ? '#e0edff' : '#ffffff';
+          button.style.color = active ? '#1d4ed8' : '#475569';
+        });
+      }
+
+      function setAltEditing(enabled) {
+        altEditing = Boolean(enabled);
+        if (modeEditBtn) {
+          modeEditBtn.textContent = altEditing ? '提交' : '修改内容';
+          modeEditBtn.dataset.editing = altEditing ? 'true' : 'false';
+        }
+        if (mainCardAltTip) {
+          mainCardAltTip.textContent = altEditing
+            ? '当前可编辑；点击“提交”后，后面再接数据库保存逻辑。'
+            : '默认只读；点击“修改内容”后进入可编辑状态。';
+        }
+        if (mainCardAltEditor) {
+          mainCardAltEditor.readOnly = !altEditing;
+          mainCardAltEditor.style.background = altEditing ? 'rgba(255, 255, 255, 0.98)' : 'transparent';
+          mainCardAltEditor.style.cursor = altEditing ? 'text' : 'default';
+        }
+      }
+
+      function renderAltActions(mode) {
+        if (!mainCardAltActions) {
+          return;
+        }
+        mainCardAltActions.innerHTML = '';
+
+        const current = getCurrentWordData();
+
+        function buildPager(labelPrefix, currentIndex, total, onPrev, onNext) {
+          const status = document.createElement('div');
+          status.textContent = total > 0 ? (labelPrefix + ' ' + (currentIndex + 1) + ' / ' + total) : (labelPrefix + ' 0 / 0');
+          status.style.fontSize = '13px';
+          status.style.color = '#64748b';
+          status.style.padding = '0 4px';
+
+          const prevBtn = document.createElement('button');
+          prevBtn.type = 'button';
+          prevBtn.textContent = '上一条';
+          prevBtn.style.cssText = 'padding:6px 12px;border:1px solid #dbe4f3;border-radius:999px;background:#ffffff;color:#475569;font-size:13px;font-weight:600;cursor:pointer;';
+          prevBtn.disabled = total <= 1 || currentIndex <= 0;
+          if (prevBtn.disabled) {
+            prevBtn.style.opacity = '0.45';
+            prevBtn.style.cursor = 'not-allowed';
+          } else {
+            prevBtn.addEventListener('click', onPrev);
+          }
+
+          const nextBtn = document.createElement('button');
+          nextBtn.type = 'button';
+          nextBtn.textContent = '下一条';
+          nextBtn.style.cssText = 'padding:6px 12px;border:1px solid #dbe4f3;border-radius:999px;background:#ffffff;color:#475569;font-size:13px;font-weight:600;cursor:pointer;';
+          nextBtn.disabled = total <= 1 || currentIndex >= total - 1;
+          if (nextBtn.disabled) {
+            nextBtn.style.opacity = '0.45';
+            nextBtn.style.cursor = 'not-allowed';
+          } else {
+            nextBtn.addEventListener('click', onNext);
+          }
+
+          mainCardAltActions.appendChild(prevBtn);
+          mainCardAltActions.appendChild(status);
+          mainCardAltActions.appendChild(nextBtn);
+        }
+
+        if (mode === 'examples') {
+          const revealBtn = document.createElement('button');
+          revealBtn.type = 'button';
+          revealBtn.textContent = currentExampleRevealed ? '隐藏内容' : '显示内容';
+          revealBtn.style.cssText = 'padding:6px 12px;border:1px solid #dbe4f3;border-radius:999px;background:#ffffff;color:#475569;font-size:13px;font-weight:600;cursor:pointer;';
+          revealBtn.addEventListener('click', function () {
+            currentExampleRevealed = !currentExampleRevealed;
+            if (mainCardAltEditor) {
+              mainCardAltEditor.value = getModeContent('examples');
+            }
+            renderAltActions('examples');
+          });
+          mainCardAltActions.appendChild(revealBtn);
+          buildPager(
+            '例句',
+            currentExampleIndex,
+            current.examples.length,
+            function () {
+              currentExampleRevealed = false;
+              currentExampleIndex = Math.max(0, currentExampleIndex - 1);
+              lastSpokenWord = '';
+              if (mainCardAltEditor) {
+                mainCardAltEditor.value = getModeContent('examples');
+              }
+              renderAltActions('examples');
+            },
+            function () {
+              currentExampleRevealed = false;
+              currentExampleIndex = Math.min(current.examples.length - 1, currentExampleIndex + 1);
+              lastSpokenWord = '';
+              if (mainCardAltEditor) {
+                mainCardAltEditor.value = getModeContent('examples');
+              }
+              renderAltActions('examples');
+            }
+          );
+          return;
+        }
+
+        if (mode === 'story') {
+          buildPager(
+            '故事',
+            currentStoryIndex,
+            current.stories.length,
+            function () {
+              currentStoryIndex = Math.max(0, currentStoryIndex - 1);
+              lastSpokenWord = '';
+              if (mainCardAltEditor) {
+                mainCardAltEditor.value = getModeContent('story');
+              }
+              renderAltActions('story');
+            },
+            function () {
+              currentStoryIndex = Math.min(current.stories.length - 1, currentStoryIndex + 1);
+              lastSpokenWord = '';
+              if (mainCardAltEditor) {
+                mainCardAltEditor.value = getModeContent('story');
+              }
+              renderAltActions('story');
+            }
+          );
+        }
+      }
+
+      function switchCardMode(mode) {
+        const normalizedMode = mode === 'info' ? 'word_root' : mode;
+        currentCardMode = normalizedMode;
+        setAltEditing(false);
+        const isWordMode = mode === 'word';
+        const isDictationMode = normalizedMode === 'dictation';
+        const isExamplesMode = normalizedMode === 'examples';
+        const isInfoRootMode = normalizedMode === 'word_root';
+        const isInfoChildMode = ['word_root', 'affix', 'history', 'forms', 'memory_tip', 'story'].indexOf(normalizedMode) !== -1;
+        const isInfoMode = isInfoRootMode || isInfoChildMode;
+
+        if (mainCardFlip) {
+          mainCardFlip.style.display = isWordMode ? 'block' : 'none';
+        }
+        if (mainCardAlt) {
+          mainCardAlt.style.display = isWordMode ? 'none' : 'block';
+        }
+        if (mainCardToolbar) {
+          mainCardToolbar.style.display = isWordMode ? 'none' : 'flex';
+        }
+        if (infoSubmenu) {
+          infoSubmenu.style.display = isInfoMode ? 'flex' : 'none';
+        }
+        if (floatingSelector) {
+          floatingSelector.style.display = isDictationMode ? 'none' : 'block';
+        }
+
+        updateModeHeader(normalizedMode);
+        updateInfoSubmenuActive(isInfoChildMode ? normalizedMode : '');
+
+        if (!isExamplesMode) {
+          currentExampleRevealed = false;
+        }
+
+        if (isWordMode) {
+          cardShowingMeaning = false;
+          if (mainCardFlip) {
+            mainCardFlip.style.transform = 'rotateY(0deg)';
+          }
+          setDirectionButtonsVisible(false);
+          updateDirectionCard('');
+          hideDictationInterface();
+          renderAltActions(normalizedMode);
+          return;
+        }
+
+        if (isDictationMode) {
+          if (mainCardAltEditor) {
+            mainCardAltEditor.value = '';
+          }
+          showDictationInterface();
+        } else {
+          hideDictationInterface();
+          if (mainCardAltEditor) {
+            mainCardAltEditor.value = getModeContent(normalizedMode);
+            mainCardAltEditor.scrollTop = 0;
+          }
+        }
+        renderAltActions(normalizedMode);
+        if (!isWordMode) {
+          setDirectionButtonsVisible(false);
+          updateDirectionCard('');
+        }
+        if (studyStarted && ttsEnabled) {
+          startAutoSpeak();
+        }
+      }
+      const queueLocked = {{ 'true' if queue_locked else 'false' }};
+
+      if (globalSelectorAnchor) {
+        globalSelectorAnchor.style.right = '0';
+        globalSelectorAnchor.style.justifyContent = 'flex-end';
+      }
+
+      if (floatingSelector && globalSelectorAnchor) {
+        globalSelectorAnchor.appendChild(floatingSelector);
+      }
+
+      function updateTtsButton() {
+        if (!ttsToggleBtn) {
+          return;
+        }
+        ttsToggleBtn.dataset.ttsEnabled = ttsEnabled ? 'true' : 'false';
+        ttsToggleBtn.style.background = ttsEnabled ? '#dbeafe' : '#f4f6fb';
+        ttsToggleBtn.style.borderColor = ttsEnabled ? '#93c5fd' : '#d1d5df';
+        if (ttsGlobalText) {
+          ttsGlobalText.textContent = ttsEnabled ? '朗读开' : '朗读关';
+          ttsGlobalText.style.color = ttsEnabled ? '#1d4ed8' : '#64748b';
+        }
+      }
+
+      function speakCurrentWord(forceSpeak) {
+        const speechText = getCurrentSpeechText();
+        if (!studyStarted || !ttsEnabled || !speechText) {
+          return false;
+        }
+        if (!forceSpeak && speechText === lastSpokenWord) {
+          return false;
+        }
+        if (!('speechSynthesis' in window)) {
+          return false;
+        }
+        if (currentCardMode !== 'examples') {
+          window.speechSynthesis.cancel();
+        } else if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+          return false;
+        }
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        utterance.lang = 'en-US';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        if (currentCardMode === 'examples') {
+          utterance.onend = function () {
+            if (autoSpeakDelayTimer) {
+              window.clearTimeout(autoSpeakDelayTimer);
+            }
+            autoSpeakDelayTimer = window.setTimeout(function () {
+              autoSpeakDelayTimer = null;
+              if (studyStarted && ttsEnabled && currentCardMode === 'examples') {
+                startAutoSpeak();
+              }
+            }, 2000);
+          };
+          utterance.onerror = function () {
+            if (autoSpeakDelayTimer) {
+              window.clearTimeout(autoSpeakDelayTimer);
+            }
+            autoSpeakDelayTimer = window.setTimeout(function () {
+              autoSpeakDelayTimer = null;
+              if (studyStarted && ttsEnabled && currentCardMode === 'examples') {
+                startAutoSpeak();
+              }
+            }, 2000);
+          };
+        }
+        window.speechSynthesis.speak(utterance);
+        lastSpokenWord = speechText;
+        return true;
+      }
+
+      function startAutoSpeak() {
+        clearAutoSpeakTimers();
+        if (!studyStarted || !ttsEnabled) {
+          return;
+        }
+        if (currentCardMode === 'examples') {
+          if ('speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+          }
+          lastSpokenWord = '';
+          autoSpeakDelayTimer = window.setTimeout(function () {
+            autoSpeakDelayTimer = null;
+            if (!studyStarted || !ttsEnabled || currentCardMode !== 'examples') {
+              return;
+            }
+            if (!getCurrentSpeechText()) {
+              autoSpeakDelayTimer = window.setTimeout(function () {
+                autoSpeakDelayTimer = null;
+                if (studyStarted && ttsEnabled && currentCardMode === 'examples') {
+                  startAutoSpeak();
+                }
+              }, 2000);
+              return;
+            }
+            speakCurrentWord(true);
+          }, 80);
+          return;
+        }
+        autoSpeakTimer = window.setTimeout(function repeatSpeech() {
+          autoSpeakTimer = null;
+          if (!studyStarted || !ttsEnabled || currentCardMode === 'examples') {
+            return;
+          }
+          lastSpokenWord = '';
+          speakCurrentWord(true);
+          autoSpeakTimer = window.setTimeout(repeatSpeech, 2000);
+        }, 2000);
+      }
+
+      function updateMainCard(button) {
+        if (!mainWord || !mainMeaning) {
+          return;
+        }
+        const word = button ? (button.dataset.word || '') : '';
+        const meaning = button ? (button.dataset.meaning || '') : '';
+        mainWord.textContent = word || '暂无单词';
+        mainMeaning.textContent = meaning || '暂无词义';
+        cardShowingMeaning = false;
+        currentExampleIndex = 0;
+        currentStoryIndex = 0;
+        currentExampleRevealed = false;
+        lastSpokenWord = '';
+        if (currentCardMode !== 'word') { switchCardMode(currentCardMode); }
+        if (mainCardFlip) {
+          mainCardFlip.style.transform = 'rotateY(0deg)';
+        }
+      }
+
+      function scrollButtonToCenter(button) {
+        if (!selectorWindow || !button) {
+          return;
+        }
+        const buttonCenter = button.offsetTop + (button.offsetHeight / 2);
+        const target = buttonCenter - (selectorWindow.clientHeight / 2);
+        selectorWindow.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+      }
+
+      function updateButtonVisual() {
+        if (!selectorWindow || !queueButtons.length) {
+          return;
+        }
+
+        const centerY = selectorWindow.getBoundingClientRect().top + selectorWindow.clientHeight / 2;
+        let activeButton = null;
+        let minDistance = Number.POSITIVE_INFINITY;
+
+        queueButtons.forEach(function (btn) {
+          const rect = btn.getBoundingClientRect();
+          const btnCenterY = rect.top + rect.height / 2;
+          const distance = Math.abs(centerY - btnCenterY);
+          const normalized = Math.min(distance / 160, 1);
+          const scale = 1 - normalized * 0.16;
+          const opacity = Math.max(0.28, 1 - normalized * 0.45);
+
+          btn.style.transform = `scale(${scale})`;
+          btn.style.opacity = `${opacity}`;
+          btn.style.background = '#f8fbff';
+          btn.classList.remove('is-active');
+          btn.style.pointerEvents = 'auto';
+
+          if (manualActiveButton === btn) {
+            activeButton = btn;
+            minDistance = -1;
+          } else if (minDistance !== -1 && distance < minDistance) {
+            minDistance = distance;
+            activeButton = btn;
+          }
+        });
+
+        if (activeButton) {
+          activeButton.classList.add('is-active');
+          activeButton.style.background = '#e0edff';
+          activeButton.style.opacity = '1';
+          activeButton.style.transform = 'scale(1)';
+          updateMainCard(activeButton);
+        }
+      }
+
+      function bindQueueButtonEvents() {
+        queueButtons.forEach(function (button) {
+          button.addEventListener('click', function () {
+            manualActiveButton = button;
+            updateButtonVisual();
+            updateMainCard(button);
+            scrollButtonToCenter(button);
+            window.setTimeout(function () {
+              updateButtonVisual();
+            }, 220);
+          });
+        });
+      }
+
+      function renderStudyItems(items) {
+        if (!wordQueue || !mainWord) {
+          return;
+        }
+
+        const validItems = Array.isArray(items)
+          ? items.filter(function (item) {
+              const word = String((item && item.word) || '').trim();
+              return word !== '';
+            })
+          : [];
+
+        wordQueue.innerHTML = '';
+        queueButtons = [];
+        manualActiveButton = null;
+
+        validItems.forEach(function (item, index) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'queue-word-btn' + (index === 0 ? ' is-active' : '');
+          button.dataset.index = String(index);
+          button.dataset.word = String(item.word).trim();
+          button.dataset.meaning = String((item.meaning || '')).trim();
+          button.dataset.word_root = String((item.word_root || '')).trim();
+          button.dataset.affix = String((item.affix || '')).trim();
+          button.dataset.history = String((item.history || '')).trim();
+          button.dataset.forms = String((item.forms || '')).trim();
+          button.dataset.memory_tip = String((item.memory_tip || '')).trim();
+          button.dataset.examples = JSON.stringify(Array.isArray(item.examples) ? item.examples : []);
+          button.dataset.stories = JSON.stringify(Array.isArray(item.stories) ? item.stories : []);
+          button.style.padding = '10px 14px';
+          button.style.minHeight = '44px';
+          button.style.borderRadius = '14px';
+          button.style.background = index === 0 ? '#e0edff' : '#f8fbff';
+          button.style.border = '1px solid #dbe4f3';
+          button.style.color = '#111827';
+          button.style.textAlign = 'left';
+          button.style.cursor = 'pointer';
+          button.style.font = 'inherit';
+          button.style.transition = 'transform 0.18s ease, opacity 0.18s ease, background 0.18s ease, box-shadow 0.18s ease';
+          button.textContent = String(item.word).trim();
+          wordQueue.appendChild(button);
+          queueButtons.push(button);
+        });
+
+        if (validItems.length > 0) {
+          mainWord.textContent = String(validItems[0].word).trim();
+          if (mainMeaning) {
+            mainMeaning.textContent = String((validItems[0].meaning || '')).trim() || '暂无词义';
+          }
+          if (mainCardFlip) {
+            mainCardFlip.style.transform = 'rotateY(0deg)';
+          }
+          cardShowingMeaning = false;
+          currentCardMode = 'word';
+          manualActiveButton = queueButtons[0] || null;
+        } else {
+          mainWord.textContent = '暂无单词';
+          if (mainMeaning) {
+            mainMeaning.textContent = '暂无词义';
+          }
+          if (mainCardFlip) {
+            mainCardFlip.style.transform = 'rotateY(0deg)';
+          }
+          cardShowingMeaning = false;
+          currentCardMode = 'word';
+        }
+
+        bindQueueButtonEvents();
+
+        if (selectorWindow) {
+          selectorWindow.scrollTop = 0;
+        }
+
+        window.setTimeout(function () {
+          updateButtonVisual();
+        }, 60);
+      }
+
+      function toggleMainCardMeaning() {
+        if (!mainCardFlip || !mainWord || !mainMeaning) {
+          return;
+        }
+        if (currentCardMode !== 'word') {
+          switchCardMode('word');
+          return;
+        }
+        const currentWord = (mainWord.textContent || '').trim();
+        if (!currentWord || currentWord === '暂无单词') {
+          return;
+        }
+        cardShowingMeaning = !cardShowingMeaning;
+        mainCardFlip.style.transform = cardShowingMeaning ? 'rotateY(180deg)' : 'rotateY(0deg)';
+      }
+
+      function returnToWordMode() {
+        if (currentCardMode !== 'word') {
+          switchCardMode('word');
+          return;
+        }
+        if (cardShowingMeaning) {
+          toggleMainCardMeaning();
+        }
+      }
+
+      function revealStudyUi() {
+        studyStarted = true;
+        if (startModePanel) {
+          startModePanel.style.display = 'none';
+        }
+        if (studyStage) {
+          studyStage.style.display = 'flex';
+        }
+        if (floatingSelector) {
+          floatingSelector.style.display = 'block';
+        }
+        if (globalDirectionAnchor) {
+          globalDirectionAnchor.style.display = 'block';
+          globalDirectionAnchor.style.pointerEvents = 'none';
+        }
+      }
+
+      function renderManualSelectedList() {
+        if (!manualSelectedList || !manualSelectedCount) {
+          return;
+        }
+
+        manualSelectedCount.textContent = String(manualSelectedWords.length);
+        manualSelectedList.innerHTML = '';
+
+        if (manualSelectedWords.length === 0) {
+          const emptyRow = document.createElement('div');
+          emptyRow.textContent = '还没有添加单词。';
+          emptyRow.style.padding = '10px 12px';
+          emptyRow.style.border = '1px dashed #dbe4f3';
+          emptyRow.style.borderRadius = '12px';
+          emptyRow.style.color = '#64748b';
+          emptyRow.style.fontSize = '14px';
+          manualSelectedList.appendChild(emptyRow);
+          return;
+        }
+
+        manualSelectedWords
+          .map(function (word, index) {
+            return { word: word, actualIndex: index };
+          })
+          .reverse()
+          .forEach(function (item, displayIndex) {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.justifyContent = 'space-between';
+            row.style.gap = '10px';
+            row.style.padding = '10px 12px';
+            row.style.border = '1px solid #dbe4f3';
+            row.style.borderRadius = '12px';
+            row.style.background = '#ffffff';
+
+            const label = document.createElement('div');
+            label.textContent = (displayIndex + 1) + '. ' + item.word;
+            label.style.color = '#111827';
+            label.style.fontSize = '14px';
+            label.style.fontWeight = '600';
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.textContent = '移除';
+            removeBtn.style.padding = '6px 10px';
+            removeBtn.style.border = '1px solid #dbe4f3';
+            removeBtn.style.borderRadius = '10px';
+            removeBtn.style.background = '#ffffff';
+            removeBtn.style.color = '#475569';
+            removeBtn.style.fontSize = '13px';
+            removeBtn.style.cursor = 'pointer';
+            removeBtn.addEventListener('click', function () {
+              manualSelectedWords = manualSelectedWords.filter(function (_, i) {
+                return i !== item.actualIndex;
+              });
+              renderManualSelectedList();
+              if (manualAddMessage) {
+                manualAddMessage.textContent = '已移除一个单词。';
+                manualAddMessage.style.color = '#64748b';
+              }
+            });
+
+            row.appendChild(label);
+            row.appendChild(removeBtn);
+            manualSelectedList.appendChild(row);
+          });
+      }
+
+      function openManualPanel() {
+        if (queueLocked) {
+          if (manualLockHint) {
+            manualLockHint.style.display = 'block';
+            manualLockHint.textContent = '今天已经开始学习，不能再手工添加单词。';
+          }
+          return;
+        }
+        if (manualAddPanel) {
+          manualAddPanel.style.display = 'block';
+        }
+        if (manualAddMessage) {
+          manualAddMessage.textContent = '请输入词库中已有的单词。';
+          manualAddMessage.style.color = '#64748b';
+        }
+        renderManualSelectedList();
+        if (manualWordInput) {
+          manualWordInput.focus();
+        }
+      }
+
+      function closeManualPanel() {
+        if (manualAddPanel) {
+          manualAddPanel.style.display = 'none';
+        }
+        if (manualWordInput) {
+          manualWordInput.value = '';
+        }
+      }
+
+      async function addManualWord() {
+        if (!manualWordInput || !manualAddMessage) {
+          return;
+        }
+        if (queueLocked) {
+          manualAddMessage.textContent = '今天已经开始学习，不能再手工添加单词。';
+          manualAddMessage.style.color = '#b45309';
+          return;
+        }
+
+        const rawWord = manualWordInput.value || '';
+        const word = rawWord.trim();
+        if (!word) {
+          manualAddMessage.textContent = '请输入单词。';
+          manualAddMessage.style.color = '#b45309';
+          manualWordInput.focus();
+          return;
+        }
+
+        if (manualSelectedWords.length >= targetWordCount) {
+          manualAddMessage.textContent = '已达到学习数上限，不能继续添加。';
+          manualAddMessage.style.color = '#b45309';
+          return;
+        }
+
+        const normalizedWord = word.toLowerCase();
+        const exists = manualSelectedWords.some(function (item) {
+          return item.toLowerCase() === normalizedWord;
+        });
+        if (exists) {
+          manualAddMessage.textContent = '这个单词已经在手工列表里了。';
+          manualAddMessage.style.color = '#b45309';
+          manualWordInput.focus();
+          manualWordInput.select();
+          return;
+        }
+
+        manualAddWordBtn.disabled = true;
+        manualAddMessage.textContent = '正在查询词库...';
+        manualAddMessage.style.color = '#64748b';
+
+        try {
+          const response = await fetch('/api/find-word', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ word: word })
+          });
+
+          const data = await response.json();
+          if (!response.ok || !data.ok || !data.exists) {
+            manualAddMessage.textContent = (data && data.message) ? data.message + ' 目前请重新输入。' : '词库中未找到该单词。';
+            manualAddMessage.style.color = '#b45309';
+            manualWordInput.focus();
+            manualWordInput.select();
+            return;
+          }
+
+          manualSelectedWords.push(String(data.word || word).trim());
+          manualWordInput.value = '';
+          manualAddMessage.textContent = '已加入手工列表：' + String(data.word || word).trim();
+          manualAddMessage.style.color = '#166534';
+          renderManualSelectedList();
+          if (manualSelectedList) {
+            manualSelectedList.scrollTop = 0;
+          }
+          manualWordInput.focus();
+        } catch (error) {
+          manualAddMessage.textContent = '查询失败，请重试。';
+          manualAddMessage.style.color = '#b45309';
+        } finally {
+          manualAddWordBtn.disabled = false;
+        }
+      }
+
+      async function startRandomStudy() {
+        if (!startRandomBtn) {
+          return;
+        }
+
+        startRandomBtn.disabled = true;
+        startRandomBtn.textContent = '正在开始...';
+
+        try {
+          const response = await fetch('/api/start-study', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error('start study failed');
+          }
+
+          revealStudyUi();
+          renderStudyItems(data.items || []);
+          updateTtsButton();
+          startAutoSpeak();
+
+          window.setTimeout(function () {
+            speakCurrentWord(true);
+          }, 100);
+        } catch (error) {
+          startRandomBtn.disabled = false;
+          startRandomBtn.textContent = '随机开始';
+          window.alert('开始学习失败，请重试。');
+        }
+      }
+
+      async function startManualStudy() {
+        if (!manualAddMessage) {
+          return;
+        }
+        if (queueLocked) {
+          manualAddMessage.textContent = '今天已经开始学习，不能再手工添加单词。';
+          manualAddMessage.style.color = '#b45309';
+          return;
+        }
+
+        if (manualSelectedWords.length === 0) {
+          manualAddMessage.textContent = '请先至少添加一个单词。';
+          manualAddMessage.style.color = '#b45309';
+          return;
+        }
+
+        if (manualStartBtn) {
+          manualStartBtn.disabled = true;
+          manualStartBtn.textContent = '正在开始...';
+        }
+
+        try {
+          const response = await fetch('/api/start-study-manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ words: manualSelectedWords })
+          });
+
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            if (data && data.missing_words && data.missing_words.length > 0) {
+              manualAddMessage.textContent = '以下单词不在词库中：' + data.missing_words.join('、');
+            } else {
+              manualAddMessage.textContent = (data && data.message) ? data.message : '手工开始失败，请重试。';
+            }
+            manualAddMessage.style.color = '#b45309';
+            return;
+          }
+
+          revealStudyUi();
+          renderStudyItems(data.items || []);
+          updateTtsButton();
+          startAutoSpeak();
+          closeManualPanel();
+
+          window.setTimeout(function () {
+            speakCurrentWord(true);
+          }, 100);
+        } catch (error) {
+          manualAddMessage.textContent = '手工开始失败，请重试。';
+          manualAddMessage.style.color = '#b45309';
+        } finally {
+          if (manualStartBtn) {
+            manualStartBtn.disabled = false;
+            manualStartBtn.textContent = '开始本次学习';
+          }
+        }
+      }
+
+      if (mainCardFlip) {
+        mainCardFlip.addEventListener('dblclick', function () {
+          toggleMainCardMeaning();
+        });
+      }
+
+      document.addEventListener('dblclick', function (event) {
+        if (directionPreviewCard && directionPreviewCard.contains(event.target)) {
+          return;
+        }
+        if (floatingSelector && floatingSelector.contains(event.target)) {
+          return;
+        }
+        if (mainCardFlip && mainCardFlip.contains(event.target)) {
+          return;
+        }
+        returnToWordMode();
+      });
+
+      infoSubmenuButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          switchCardMode(button.dataset.infoMode || 'info');
+        });
+      });
+
+      if (modeBackBtn) {
+        modeBackBtn.addEventListener('click', function () {
+          switchCardMode('word');
+        });
+      }
+
+      if (modeEditBtn) {
+        modeEditBtn.addEventListener('click', function () {
+          if (!altEditing) {
+            setAltEditing(true);
+            if (mainCardAltEditor) {
+              mainCardAltEditor.focus();
+            }
+            return;
+          }
+          window.alert('这里先预留为提交到数据库的入口，后面再接正式保存逻辑。');
+          setAltEditing(false);
+        });
+      }
+
+      if (dictationInput) {
+        dictationInput.addEventListener('input', handleDictationInputChange);
+        dictationInput.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            currentDictationInput = String(dictationInput.value || '');
+            if (!currentDictationInput.trim()) {
+              setDictationFeedback('请输入内容后再按回车', false);
+              return;
+            }
+            submitDictationAnswer();
+          }
+        });
+      }
+
+      if (dictationPanel) {
+        dictationPanel.addEventListener('click', function () {
+          if (dictationInput && currentCardMode === 'dictation' && !currentDictationLocked) {
+            dictationInput.focus();
+          }
+        });
+      }
+
+      window.addEventListener('mousemove', function (event) {
+        showDirectionButtonsTemporarily(event);
+      });
+
+      document.addEventListener('mouseleave', function () {
+        if (navHideTimer) {
+          window.clearTimeout(navHideTimer);
+        }
+        setDirectionButtonsVisible(false);
+        updateDirectionCard('');
+      });
+
+      window.addEventListener('blur', function () {
+        if (navHideTimer) {
+          window.clearTimeout(navHideTimer);
+        }
+        setDirectionButtonsVisible(false);
+        updateDirectionCard('');
+      });
+
+      window.addEventListener('resize', function () {
+        if (activeDirectionMode) {
+          setDirectionCardPosition(activeDirectionMode);
+        }
+      });
+
+      if (globalDirectionAnchor) {
+        globalDirectionAnchor.addEventListener('mouseleave', function () {
+          scheduleHideDirectionButtons();
+        });
+      }
+
+      directionNavButtons.forEach(function (button) {
+        button.addEventListener('mouseenter', function () {
+          if (navHideTimer) {
+            window.clearTimeout(navHideTimer);
+          }
+          if (currentCardMode === 'word' && studyStarted && activeDirectionMode) {
+            setDirectionButtonsVisible(true);
+          }
+        });
+
+        button.addEventListener('mouseleave', function () {
+          scheduleHideDirectionButtons();
+        });
+
+        button.addEventListener('click', function () {
+          if (!activeDirectionMode) {
+            return;
+          }
+          if (navHideTimer) {
+            window.clearTimeout(navHideTimer);
+          }
+          const targetMode = activeDirectionMode;
+          setDirectionButtonsVisible(false);
+          updateDirectionCard('');
+          switchCardMode(targetMode);
+        });
+      });
+
+      window.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && currentCardMode !== 'word') {
+          switchCardMode('word');
+        }
+        if (event.key === 'Escape' && currentCardMode === 'word') {
+          if (navHideTimer) {
+            window.clearTimeout(navHideTimer);
+          }
+          setDirectionButtonsVisible(false);
+        }
+      });
+
+      if (ttsToggleBtn) {
+        ttsToggleBtn.addEventListener('click', function () {
+          ttsEnabled = !ttsEnabled;
+          if (!ttsEnabled && 'speechSynthesis' in window) {
+            window.speechSynthesis.cancel();
+          }
+          lastSpokenWord = '';
+          updateTtsButton();
+          if (ttsEnabled) {
+            startAutoSpeak();
+            speakCurrentWord(true);
+          } else {
+            clearAutoSpeakTimers();
+          }
+        });
+      }
+
+      if (selectorWindow) {
+        selectorWindow.addEventListener('scroll', function () {
+          window.requestAnimationFrame(updateButtonVisual);
+        });
+      }
+
+      window.addEventListener('resize', updateButtonVisual);
+
+      if (startRandomBtn) {
+        startRandomBtn.addEventListener('click', startRandomStudy);
+      }
+
+      if (showManualPanelBtn) {
+        showManualPanelBtn.addEventListener('click', openManualPanel);
+      }
+
+      if (manualAddWordBtn) {
+        manualAddWordBtn.addEventListener('click', addManualWord);
+      }
+
+      if (manualWordInput) {
+        manualWordInput.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            addManualWord();
+          }
+        });
+      }
+
+      if (manualClearBtn) {
+        manualClearBtn.addEventListener('click', function () {
+          manualSelectedWords = [];
+          renderManualSelectedList();
+          if (manualAddMessage) {
+            manualAddMessage.textContent = '已清空手工列表。';
+            manualAddMessage.style.color = '#64748b';
+          }
+        });
+      }
+
+      if (manualCancelBtn) {
+        manualCancelBtn.addEventListener('click', closeManualPanel);
+      }
+
+      if (manualStartBtn) {
+        manualStartBtn.addEventListener('click', startManualStudy);
+      }
+
+      renderManualSelectedList();
+      updateTtsButton();
+      switchCardMode('word');
+      updateDirectionCard('');
+      setDirectionButtonsVisible(false);
+      if (globalDirectionAnchor && !studyStarted) {
+        globalDirectionAnchor.style.display = 'none';
+      }
+
+      window.addEventListener('beforeunload', function () {
+        if (autoSpeakTimer) {
+          window.clearTimeout(autoSpeakTimer);
+        }
+        if (autoSpeakDelayTimer) {
+          window.clearTimeout(autoSpeakDelayTimer);
+        }
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
