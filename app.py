@@ -6,9 +6,10 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from services.ai_service import chat_text
 from services.word_service import build_study_queue, persist_queue_words_to_user_words
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -651,7 +652,6 @@ def api_start_study_manual():
         "items": final_items,
     }
 
-
 @app.route("/api/check-dictation", methods=["POST"])
 def api_check_dictation():
     user_id = session.get("user_id")
@@ -684,6 +684,26 @@ def api_check_dictation():
         "correct_word": correct_word,
     }
 
+@app.route("/api/ai/ping", methods=["POST"])
+def api_ai_ping():
+    user_id = session.get("user_id")
+    if not user_id:
+        return {"error": "not logged in"}, 401
+
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "").strip()
+
+    if not text:
+        return jsonify({"ok": False, "error": "text 不能为空"}), 400
+
+    try:
+        result = chat_text(
+            prompt=text,
+            system_prompt="你是一个英语学习助手，请简短回答。",
+        )
+        return jsonify({"ok": True, "result": result})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/logout")
 def logout():

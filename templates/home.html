@@ -130,6 +130,16 @@
 
           <div id="main-card-wrap" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; width: 100%; position: relative; padding: 0; overflow: visible; z-index: 2;">
 
+            <div id="study-progress-wrap" style="display: none; width: min(92%, 900px); padding: 0 12px; box-sizing: border-box;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px;">
+                <div style="font-size: 13px; font-weight: 700; color: #334155;">学习进度</div>
+                <div id="study-progress-text" style="font-size: 13px; color: #64748b;">0 / 3</div>
+              </div>
+              <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden;">
+                <div id="study-progress-bar" style="width: 0%; height: 100%; background: #4f46e5; border-radius: 999px; transition: width 0.28s ease;"></div>
+              </div>
+            </div>
+
             <div id="main-card-toolbar" style="display: none; width: min(92%, 900px); align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; padding: 6px 12px;">
               <div style="display: flex; align-items: center; gap: 8px;">
                 <button
@@ -232,6 +242,7 @@
     </div>
   {% endif %}
 
+  <!-- TODO: 后续按功能拆分为 home.core.js / home.queue.js / home.card.js / home.dictation.js / home.dialogue.voice.js / home.tts.js -->
   <script>
     (function () {
       const startModePanel = document.getElementById('start-mode-panel');
@@ -280,6 +291,9 @@
       const ttsToggleBtn = document.getElementById('tts-toggle-global-btn');
       const ttsGlobalText = document.getElementById('tts-global-text');
       const mainCardWrap = document.getElementById('main-card-wrap');
+      const studyProgressWrap = document.getElementById('study-progress-wrap');
+      const studyProgressBar = document.getElementById('study-progress-bar');
+      const studyProgressText = document.getElementById('study-progress-text');
       const studyCard = document.querySelector('.card');
       const pageWrap = document.querySelector('.wrap');
       const directionNavButtons = directionPreviewCard ? [directionPreviewCard] : [];
@@ -301,6 +315,9 @@
       let currentDictationWord = '';
       let currentDictationInput = '';
       let currentDictationLocked = false;
+      let currentProgress = 0;
+      const MAX_PROGRESS = 3;
+      const progressStateByWord = {};
       let activeDirectionMode = '';
       const directionCardMap = {
         examples: {
@@ -645,8 +662,42 @@
         dictationFeedback.style.color = isCorrect ? '#166534' : '#b45309';
       }
 
+      function updateStudyProgressUI() {
+        const safeProgress = Math.max(0, Math.min(currentProgress, MAX_PROGRESS));
+        const percent = (safeProgress / MAX_PROGRESS) * 100;
+
+        if (studyProgressBar) {
+          studyProgressBar.style.width = percent + '%';
+        }
+        if (studyProgressText) {
+          studyProgressText.textContent = safeProgress + ' / ' + MAX_PROGRESS;
+        }
+      }
+
+      function ensureWordProgressState(word) {
+        const key = String(word || '').trim().toLowerCase();
+        if (!key) {
+          return null;
+        }
+        if (!progressStateByWord[key]) {
+          progressStateByWord[key] = {
+            progress: 0,
+            dictationDone: false
+          };
+        }
+        return progressStateByWord[key];
+      }
+
+      function syncCurrentWordProgress() {
+        const targetWord = getDictationTargetWord();
+        const state = ensureWordProgressState(targetWord);
+        currentProgress = state ? state.progress : 0;
+        updateStudyProgressUI();
+      }
+
       function resetDictationState() {
         currentDictationWord = getDictationTargetWord();
+        syncCurrentWordProgress();
         currentDictationInput = '';
         currentDictationLocked = false;
         if (dictationInput) {
@@ -749,10 +800,18 @@
           }
 
           if (data.is_correct) {
-            setDictationFeedback('拼写正确', true);
+            const progressState = ensureWordProgressState(targetWord);
+            if (progressState && !progressState.dictationDone) {
+              progressState.dictationDone = true;
+              progressState.progress = Math.min(MAX_PROGRESS, progressState.progress + 1);
+            }
+            currentProgress = progressState ? progressState.progress : currentProgress;
+            updateStudyProgressUI();
+            setDictationFeedback('拼写正确，本项进度 +1', true);
           } else {
             setDictationFeedback('拼写错误，正确答案：' + String(data.correct_word || targetWord), false);
           }
+
           if (dictationInput) {
             dictationInput.value = '';
           }
@@ -1173,6 +1232,7 @@
         currentStoryIndex = 0;
         currentExampleRevealed = false;
         lastSpokenWord = '';
+        syncCurrentWordProgress();
         if (currentCardMode !== 'word') { switchCardMode(currentCardMode); }
         if (mainCardFlip) {
           mainCardFlip.style.transform = 'rotateY(0deg)';
@@ -1299,6 +1359,7 @@
           cardShowingMeaning = false;
           currentCardMode = 'word';
           manualActiveButton = queueButtons[0] || null;
+          syncCurrentWordProgress();
         } else {
           mainWord.textContent = '暂无单词';
           if (mainMeaning) {
@@ -1309,6 +1370,8 @@
           }
           cardShowingMeaning = false;
           currentCardMode = 'word';
+          currentProgress = 0;
+          updateStudyProgressUI();
         }
 
         bindQueueButtonEvents();
@@ -1363,6 +1426,10 @@
           globalDirectionAnchor.style.display = 'block';
           globalDirectionAnchor.style.pointerEvents = 'none';
         }
+        if (studyProgressWrap) {
+          studyProgressWrap.style.display = 'block';
+        }
+        syncCurrentWordProgress();
       }
 
       function renderManualSelectedList() {
@@ -1838,6 +1905,7 @@
         manualStartBtn.addEventListener('click', startManualStudy);
       }
 
+      updateStudyProgressUI();
       renderManualSelectedList();
       updateTtsButton();
       switchCardMode('word');
