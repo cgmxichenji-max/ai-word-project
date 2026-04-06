@@ -40,7 +40,7 @@
     const state = window.homeState;
     const speechText = window.getCurrentSpeechText();
 
-    if (!state.studyStarted || !state.ttsEnabled || !speechText) {
+    if (!state.studyStarted || !state.ttsEnabled || !speechText || state.currentCardMode === 'dialogue' || state.currentCardMode === 'example_test') {
       return false;
     }
     if (!forceSpeak && speechText === state.lastSpokenWord) {
@@ -108,7 +108,7 @@
     const state = window.homeState;
 
     clearAutoSpeakTimers();
-    if (!state.studyStarted || !state.ttsEnabled) {
+    if (!state.studyStarted || !state.ttsEnabled || state.currentCardMode === 'dialogue' || state.currentCardMode === 'example_test') {
       return;
     }
     if (state.currentCardMode === 'examples') {
@@ -156,6 +156,23 @@
     }, 2000);
   }
 
+  function pauseHomeTtsLoop() {
+    clearAutoSpeakTimers();
+    state.lastSpokenWord = '';
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  function resumeHomeTtsLoop() {
+    state.lastSpokenWord = '';
+    if (!state.studyStarted || !state.ttsEnabled || state.currentCardMode === 'dialogue' || state.currentCardMode === 'example_test') {
+      return;
+    }
+    startAutoSpeak();
+    speakCurrentWord(true);
+  }
+
   if (dom.ttsToggleBtn) {
     dom.ttsToggleBtn.addEventListener('click', function () {
       state.ttsEnabled = !state.ttsEnabled;
@@ -192,4 +209,6 @@
   window.updateTtsButton = updateTtsButton;
   window.speakCurrentWord = speakCurrentWord;
   window.startAutoSpeak = startAutoSpeak;
+  window.pauseHomeTtsLoop = pauseHomeTtsLoop;
+  window.resumeHomeTtsLoop = resumeHomeTtsLoop;
 })();

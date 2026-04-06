@@ -3,87 +3,30 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from services.ai_service import chat_text
+from repositories.user_repo import (
+    get_user_by_id,
+    get_user_by_username,
+    get_user_setting,
+    is_password_set,
+    save_user_password,
+    save_user_setting,
+)
+from repositories.word_repo import get_word_by_text, get_word_by_id
+from routes.ai_routes import ai_bp
 from services.word_service import build_study_queue, persist_queue_words_to_user_words
+from utils.db import get_conn
 
-BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "data" / "ai_word_system.db"
 
 app = Flask(__name__)
 app.secret_key = "change-this-to-a-random-secret-key"
 
+app.register_blueprint(ai_bp)
 
-
-
-
-
-def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def get_user_by_username(username: str) -> Optional[sqlite3.Row]:
-    with get_conn() as conn:
-        cur = conn.execute(
-            "SELECT * FROM users WHERE username = ? AND is_active = 1",
-            (username,),
-        )
-        return cur.fetchone()
-
-
-def get_user_by_id(user_id: int) -> Optional[sqlite3.Row]:
-    with get_conn() as conn:
-        cur = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
-        return cur.fetchone()
-
-
-def get_user_setting(user_id: int) -> Optional[sqlite3.Row]:
-    with get_conn() as conn:
-        cur = conn.execute(
-            "SELECT * FROM user_study_settings WHERE user_id = ?",
-            (user_id,),
-        )
-        return cur.fetchone()
-
-
-# --- Helper functions for manual word study
-def get_word_by_text(word_text: str) -> Optional[sqlite3.Row]:
-    normalized = str(word_text or "").strip().lower()
-    if not normalized:
-        return None
-
-    with get_conn() as conn:
-        cur = conn.execute(
-            """
-            SELECT id, word
-            FROM words
-            WHERE LOWER(TRIM(word)) = ?
-            LIMIT 1
-            """,
-            (normalized,),
-        )
-        return cur.fetchone()
-
-
-def get_word_by_id(word_id: int) -> Optional[sqlite3.Row]:
-    with get_conn() as conn:
-        cur = conn.execute(
-            """
-            SELECT id, word
-            FROM words
-            WHERE id = ?
-            LIMIT 1
-            """,
-            (word_id,),
-        )
-        return cur.fetchone()
 
 
 def normalize_manual_words(words: list[str]) -> list[str]:
@@ -101,41 +44,6 @@ def normalize_manual_words(words: list[str]) -> list[str]:
         result.append(word)
 
     return result
-
-
-def save_user_setting(user_id: int, target_word_count: int) -> None:
-    with get_conn() as conn:
-        existing = conn.execute(
-            "SELECT id FROM user_study_settings WHERE user_id = ?",
-            (user_id,),
-        ).fetchone()
-        if existing:
-            conn.execute(
-                "UPDATE user_study_settings SET target_word_count = ? WHERE user_id = ?",
-                (target_word_count, user_id),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO user_study_settings (user_id, target_word_count) VALUES (?, ?)",
-                (user_id, target_word_count),
-            )
-        conn.commit()
-
-
-def save_user_password(user_id: int, plain_password: str) -> None:
-    password_hash = generate_password_hash(plain_password)
-    with get_conn() as conn:
-        conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (password_hash, user_id),
-        )
-        conn.commit()
-
-
-def is_password_set(user: sqlite3.Row) -> bool:
-    pwd = user["password_hash"]
-    return bool(pwd and str(pwd).strip())
-
 
 @app.route("/")
 def index():
@@ -684,26 +592,11 @@ def api_check_dictation():
         "correct_word": correct_word,
     }
 
-@app.route("/api/ai/ping", methods=["POST"])
-def api_ai_ping():
-    user_id = session.get("user_id")
-    if not user_id:
-        return {"error": "not logged in"}, 401
 
-    data = request.get_json(silent=True) or {}
-    text = str(data.get("text") or "").strip()
 
-    if not text:
-        return jsonify({"ok": False, "error": "text 不能为空"}), 400
 
-    try:
-        result = chat_text(
-            prompt=text,
-            system_prompt="你是一个英语学习助手，请简短回答。",
-        )
-        return jsonify({"ok": True, "result": result})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 
 @app.route("/logout")
 def logout():

@@ -1,4 +1,89 @@
 (function () {
+  function getDialogueElements() {
+    return {
+      modeDialogueBtn: document.getElementById('mode-dialogue-btn'),
+      dialoguePanel: document.getElementById('dialogue-panel'),
+      dialogueHistory: document.getElementById('dialogue-history'),
+      dialogueEmpty: document.getElementById('dialogue-empty'),
+      dialogueInput: document.getElementById('dialogue-input'),
+      dialogueSendBtn: document.getElementById('dialogue-send-btn'),
+      dialogueEndBtn: document.getElementById('dialogue-end-btn'),
+      dialogueFeedback: document.getElementById('dialogue-feedback')
+    };
+  }
+
+  function getExampleTestElements() {
+    return {
+      modeExampleTestBtn: document.getElementById('mode-example-test-btn'),
+      modeExampleTestEndBtn: document.getElementById('mode-example-test-end-btn'),
+      exampleTestPanel: document.getElementById('example-test-panel'),
+      exampleTestInput: document.getElementById('example-test-input'),
+      exampleTestSubmitBtn: document.getElementById('example-test-submit-btn'),
+      exampleTestEndBtn: document.getElementById('example-test-end-btn'),
+      exampleTestFeedback: document.getElementById('example-test-feedback')
+    };
+  }
+
+  function setExampleTestButtonsVisible(showStart, showEnd) {
+    const exampleTest = getExampleTestElements();
+
+    if (exampleTest.modeExampleTestBtn) {
+      exampleTest.modeExampleTestBtn.style.display = showStart ? 'inline-flex' : 'none';
+      exampleTest.modeExampleTestBtn.disabled = false;
+      exampleTest.modeExampleTestBtn.style.opacity = showStart ? '1' : '0';
+      exampleTest.modeExampleTestBtn.style.cursor = showStart ? 'pointer' : 'default';
+      exampleTest.modeExampleTestBtn.style.pointerEvents = showStart ? 'auto' : 'none';
+    }
+
+    if (exampleTest.modeExampleTestEndBtn) {
+      exampleTest.modeExampleTestEndBtn.style.display = showEnd ? 'inline-flex' : 'none';
+      exampleTest.modeExampleTestEndBtn.disabled = false;
+      exampleTest.modeExampleTestEndBtn.style.opacity = showEnd ? '1' : '0';
+      exampleTest.modeExampleTestEndBtn.style.cursor = showEnd ? 'pointer' : 'default';
+      exampleTest.modeExampleTestEndBtn.style.pointerEvents = showEnd ? 'auto' : 'none';
+    }
+  }
+
+  function setDialogueButtonVisible(visible) {
+    const dialog = getDialogueElements();
+    if (!dialog.modeDialogueBtn) {
+      return;
+    }
+
+    dialog.modeDialogueBtn.style.display = visible ? 'inline-flex' : 'none';
+    dialog.modeDialogueBtn.disabled = false;
+    dialog.modeDialogueBtn.style.opacity = visible ? '1' : '0';
+    dialog.modeDialogueBtn.style.cursor = visible ? 'pointer' : 'default';
+    dialog.modeDialogueBtn.style.pointerEvents = visible ? 'auto' : 'none';
+  }
+
+  function setEditButtonEnabled(enabled) {
+    const dom = window.homeDom;
+    if (!dom.modeEditBtn) {
+      return;
+    }
+
+    dom.modeEditBtn.disabled = !enabled;
+    dom.modeEditBtn.style.opacity = enabled ? '1' : '0.45';
+    dom.modeEditBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+    dom.modeEditBtn.style.pointerEvents = enabled ? 'auto' : 'none';
+  }
+
+  function resetDialoguePanelView() {
+    const dialog = getDialogueElements();
+
+    if (dialog.dialogueFeedback) {
+      dialog.dialogueFeedback.style.display = 'none';
+      dialog.dialogueFeedback.textContent = '';
+    }
+    if (dialog.dialogueEmpty) {
+      dialog.dialogueEmpty.style.display = 'block';
+      dialog.dialogueEmpty.textContent = '暂未开始对话';
+    }
+    if (dialog.dialogueInput) {
+      dialog.dialogueInput.value = '';
+    }
+  }
   function setDirectionCardPosition(mode) {
     const dom = window.homeDom;
 
@@ -268,7 +353,7 @@
     const dom = window.homeDom;
 
     if (dom.mainCardModeTitle) {
-      dom.mainCardModeTitle.textContent = window.homeState.modeTitleMap[mode] || '当前：主卡';
+      dom.mainCardModeTitle.textContent = window.homeState.modeTitleMap[mode] || '当前：听力';
     }
   }
 
@@ -417,10 +502,23 @@
   function switchCardMode(mode) {
     const dom = window.homeDom;
     const state = window.homeState;
+    const previousMode = state.currentCardMode;
     const normalizedMode = mode === 'info' ? 'word_root' : mode;
     state.currentCardMode = normalizedMode;
     setAltEditing(false);
+
+    if (normalizedMode === 'dialogue' && previousMode !== 'dialogue') {
+      window.pauseHomeTtsLoop && window.pauseHomeTtsLoop();
+    }
+    if (normalizedMode !== 'dialogue' && previousMode === 'dialogue') {
+      window.resumeHomeTtsLoop && window.resumeHomeTtsLoop();
+    }
+
+    const dialog = getDialogueElements();
+    const exampleTest = getExampleTestElements();
     const isWordMode = mode === 'word';
+    const isDialogueMode = normalizedMode === 'dialogue';
+    const isExampleTestMode = normalizedMode === 'example_test';
     const isDictationMode = normalizedMode === 'dictation';
     const isExamplesMode = normalizedMode === 'examples';
     const isInfoRootMode = normalizedMode === 'word_root';
@@ -442,6 +540,28 @@
     if (dom.floatingSelector) {
       dom.floatingSelector.style.display = isDictationMode ? 'none' : 'block';
     }
+    if (dialog.dialoguePanel) {
+      dialog.dialoguePanel.style.display = isDialogueMode ? 'flex' : 'none';
+    }
+    if (exampleTest.exampleTestPanel) {
+      exampleTest.exampleTestPanel.style.display = isExampleTestMode ? 'flex' : 'none';
+    }
+    if (dom.mainCardAltEditor) {
+      dom.mainCardAltEditor.style.display = (isDialogueMode || isExampleTestMode) ? 'none' : 'block';
+    }
+    if (dom.mainCardAltTip) {
+      dom.mainCardAltTip.style.display = (isDialogueMode || isExampleTestMode) ? 'none' : 'block';
+    }
+    if (dom.mainCardAltActions) {
+      dom.mainCardAltActions.style.display = (isDialogueMode || isExampleTestMode) ? 'none' : 'flex';
+    }
+    if (dom.mainCardAlt && dom.mainCardAlt.style) {
+      dom.mainCardAlt.style.justifyContent = (isDialogueMode || isExampleTestMode) ? 'flex-start' : 'center';
+      dom.mainCardAlt.style.paddingTop = (isDialogueMode || isExampleTestMode) ? '8px' : '';
+    }
+    setEditButtonEnabled(!(isDialogueMode || isExampleTestMode));
+    setDialogueButtonVisible(isDialogueMode);
+    setExampleTestButtonsVisible(isExamplesMode, isExampleTestMode);
 
     updateModeHeader(normalizedMode);
     updateInfoSubmenuActive(isInfoChildMode ? normalizedMode : '');
@@ -462,7 +582,21 @@
       return;
     }
 
-    if (isDictationMode) {
+    if (isDialogueMode) {
+      window.hideDictationInterface();
+      if (dom.mainCardAltEditor) {
+        dom.mainCardAltEditor.value = '';
+      }
+      if (dialog.dialoguePanel) {
+        dialog.dialoguePanel.style.marginTop = '0';
+      }
+      resetDialoguePanelView();
+      if (dialog.dialogueInput) {
+        window.setTimeout(function () {
+          dialog.dialogueInput.focus();
+        }, 0);
+      }
+    } else if (isDictationMode) {
       if (dom.mainCardAltEditor) {
         dom.mainCardAltEditor.value = '';
       }
@@ -479,7 +613,7 @@
       setDirectionButtonsVisible(false);
       updateDirectionCard('');
     }
-    if (state.studyStarted && state.ttsEnabled) {
+    if (state.studyStarted && state.ttsEnabled && normalizedMode !== 'dialogue' && normalizedMode !== 'example_test') {
       window.startAutoSpeak();
     }
   }
@@ -551,6 +685,9 @@
 
   if (dom.modeEditBtn) {
     dom.modeEditBtn.addEventListener('click', function () {
+      if (state.currentCardMode === 'dialogue') {
+        return;
+      }
       if (!state.altEditing) {
         setAltEditing(true);
         if (dom.mainCardAltEditor) {
@@ -560,6 +697,42 @@
       }
       window.alert('这里先预留为提交到数据库的入口，后面再接正式保存逻辑。');
       setAltEditing(false);
+    });
+  }
+  const dialogueEls = getDialogueElements();
+
+  const exampleTestEls = getExampleTestElements();
+
+  if (exampleTestEls.modeExampleTestBtn) {
+    exampleTestEls.modeExampleTestBtn.addEventListener('click', function () {
+      switchCardMode('example_test');
+      window.pauseHomeTtsLoop && window.pauseHomeTtsLoop();
+    });
+  }
+
+  if (exampleTestEls.modeExampleTestEndBtn) {
+    exampleTestEls.modeExampleTestEndBtn.addEventListener('click', function () {
+      switchCardMode('word');
+      window.resumeHomeTtsLoop && window.resumeHomeTtsLoop();
+    });
+  }
+
+  if (exampleTestEls.exampleTestEndBtn) {
+    exampleTestEls.exampleTestEndBtn.addEventListener('click', function () {
+      switchCardMode('word');
+      window.resumeHomeTtsLoop && window.resumeHomeTtsLoop();
+    });
+  }
+
+  if (dialogueEls.modeDialogueBtn) {
+    dialogueEls.modeDialogueBtn.addEventListener('click', function () {
+      switchCardMode('dialogue');
+    });
+  }
+
+  if (dialogueEls.dialogueEndBtn) {
+    dialogueEls.dialogueEndBtn.addEventListener('click', function () {
+      switchCardMode('word');
     });
   }
 
@@ -635,6 +808,8 @@
     }
   });
 
+  setDialogueButtonVisible(false);
+  setExampleTestButtonsVisible(false, false);
   switchCardMode('word');
   updateDirectionCard('');
   setDirectionButtonsVisible(false);

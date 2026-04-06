@@ -1,4 +1,27 @@
 (function () {
+  async function reportProgressEvent(payload) {
+    try {
+      const response = await fetch('/api/progress/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {})
+      });
+
+      const data = await response.json().catch(function () {
+        return {};
+      });
+
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.error || 'progress event failed');
+      }
+
+      return data;
+    } catch (error) {
+      console.warn('[dictation] progress event failed:', error && error.message ? error.message : error);
+      return null;
+    }
+  }
+
   async function submitDictationAnswer() {
     const dom = window.homeDom;
     const state = window.homeState;
@@ -36,14 +59,32 @@
 
       if (data.is_correct) {
         const progressState = window.ensureWordProgressState(targetWord);
-        if (progressState && !progressState.dictationDone) {
-          progressState.dictationDone = true;
-          progressState.progress = Math.min(state.MAX_PROGRESS, progressState.progress + 1);
+        if (progressState) {
+          progressState.progress = Math.min(state.MAX_PROGRESS, Number(progressState.progress || 0) + 1);
         }
         state.currentProgress = progressState ? progressState.progress : state.currentProgress;
         window.updateStudyProgressUI();
-        window.setDictationFeedback('拼写正确，本项进度 +1', true);
+
+        await reportProgressEvent({
+          word: targetWord,
+          source: 'dictation',
+          is_correct: true,
+          progress_delta: 1,
+          progress_value: progressState ? progressState.progress : state.currentProgress,
+          max_progress: state.MAX_PROGRESS
+        });
+
+        window.setDictationFeedback('拼写正确，进度 +1', true);
       } else {
+        await reportProgressEvent({
+          word: targetWord,
+          source: 'dictation',
+          is_correct: false,
+          progress_delta: 0,
+          progress_value: state.currentProgress,
+          max_progress: state.MAX_PROGRESS
+        });
+
         window.setDictationFeedback('拼写错误，正确答案：' + String(data.correct_word || targetWord), false);
       }
 
@@ -106,4 +147,5 @@
 
   window.submitDictationAnswer = submitDictationAnswer;
   window.handleDictationInputChange = handleDictationInputChange;
+  window.reportDictationProgressEvent = reportProgressEvent;
 })();

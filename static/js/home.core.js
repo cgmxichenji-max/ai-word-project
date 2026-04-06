@@ -76,7 +76,7 @@
     currentDictationInput: '',
     currentDictationLocked: false,
     currentProgress: 0,
-    MAX_PROGRESS: 3,
+    MAX_PROGRESS: 9,
     progressStateByWord: {},
     activeDirectionMode: '',
     directionCardMap: {
