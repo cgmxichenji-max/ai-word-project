@@ -6,6 +6,50 @@
     state.ttsSessionId = 0;
   }
 
+  // ── 跨浏览器 TTS 工具 ──────────────────────────────────────────────
+  // Chrome/Edge 的 voices 异步加载，且 cancel() 后立刻 speak() 会静音。
+  // 以下两个函数处理这两个问题，并通过 window 暴露给其他模块使用。
+
+  var _TTS_CANCEL_DELAY = 60; // ms：消除 Chrome/Edge cancel→speak 静音 bug
+
+  // 让 Chrome/Edge 提前触发 voices 加载
+  if ('speechSynthesis' in window && !window._ttsVoiceChangeListenerAdded) {
+    window._ttsVoiceChangeListenerAdded = true;
+    window.speechSynthesis.onvoiceschanged = function () { /* voices 就绪 */ };
+    window.speechSynthesis.getVoices(); // 触发加载
+  }
+
+  function getTtsVoice(lang) {
+    if (!('speechSynthesis' in window)) return null;
+    var voices = window.speechSynthesis.getVoices();
+    if (!voices || !voices.length) return null;
+    var langLower = (lang || 'en-US').toLowerCase();
+    var prefix = langLower.split('-')[0];
+    // 1. 精确匹配（en-US === en-US）
+    for (var i = 0; i < voices.length; i++) {
+      if (voices[i].lang.toLowerCase() === langLower) return voices[i];
+    }
+    // 2. 前缀匹配（en-US 没有时接受 en-GB 等）
+    for (var i = 0; i < voices.length; i++) {
+      if (voices[i].lang.toLowerCase().indexOf(prefix + '-') === 0) return voices[i];
+    }
+    return null; // 找不到也不阻止朗读，让浏览器用默认 voice
+  }
+
+  // 安全朗读：先 cancel，等 60ms，再 speak，同时自动选 voice
+  function safeTtsSpeak(utterance) {
+    if (!('speechSynthesis' in window)) return;
+    if (!utterance.voice) {
+      var v = getTtsVoice(utterance.lang || 'en-US');
+      if (v) utterance.voice = v;
+    }
+    window.speechSynthesis.cancel();
+    window.setTimeout(function () {
+      window.speechSynthesis.speak(utterance);
+    }, _TTS_CANCEL_DELAY);
+  }
+  // ──────────────────────────────────────────────────────────────────
+
   function clearAutoSpeakTimers() {
     const state = window.homeState;
 
@@ -49,10 +93,12 @@
     if (!('speechSynthesis' in window)) {
       return false;
     }
-    if (state.currentCardMode !== 'examples') {
-      window.speechSynthesis.cancel();
-    } else if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-      return false;
+    // examples 模式：startAutoSpeak 已在 80ms 前 cancel，直接检查是否已在播放
+    // 非 examples 模式：safeTtsSpeak 内部会 cancel + 60ms 延迟，解决 Chrome/Edge 静音 bug
+    if (state.currentCardMode === 'examples') {
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        return false;
+      }
     }
     const utterance = new SpeechSynthesisUtterance(speechText);
     utterance.lang = 'en-US';
@@ -98,8 +144,14 @@
           }
         }, 2000);
       };
+      // examples 模式：cancel 已在 startAutoSpeak 里提前完成（有 80ms 间隔），直接 speak
+      var exVoice = getTtsVoice('en-US');
+      if (exVoice) utterance.voice = exVoice;
+      window.speechSynthesis.speak(utterance);
+    } else {
+      // 非 examples 模式：用 safeTtsSpeak（cancel + 60ms + speak），修复 Chrome/Edge 静音
+      safeTtsSpeak(utterance);
     }
-    window.speechSynthesis.speak(utterance);
     state.lastSpokenWord = speechText;
     return true;
   }
@@ -211,4 +263,6 @@
   window.startAutoSpeak = startAutoSpeak;
   window.pauseHomeTtsLoop = pauseHomeTtsLoop;
   window.resumeHomeTtsLoop = resumeHomeTtsLoop;
+  window.getTtsVoice = getTtsVoice;
+  window.safeTtsSpeak = safeTtsSpeak;
 })();

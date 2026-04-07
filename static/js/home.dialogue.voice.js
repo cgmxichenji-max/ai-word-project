@@ -157,7 +157,6 @@
     }
 
     try {
-      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(content);
       utterance.lang = 'en-US';
       utterance.rate = 0.95;
@@ -178,7 +177,9 @@
           }, 150);
         }
       };
-      window.speechSynthesis.speak(utterance);
+      // safeTtsSpeak：cancel + 60ms 延迟 + speak + 自动选 voice
+      // 修复 Chrome/Edge 在 cancel 后立刻 speak 导致静音的 bug
+      window.safeTtsSpeak(utterance);
     } catch (err) {
       if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
         state.dialogueState.shouldResumeListening = false;
