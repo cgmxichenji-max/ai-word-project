@@ -18,6 +18,7 @@ from repositories.user_repo import (
 )
 from repositories.word_repo import get_word_by_text, get_word_by_id
 from routes.ai_routes import ai_bp
+from routes.word_library_routes import word_library_bp
 from services.word_service import build_study_queue, persist_queue_words_to_user_words
 from utils.db import get_conn
 
@@ -26,7 +27,7 @@ app = Flask(__name__)
 app.secret_key = "change-this-to-a-random-secret-key"
 
 app.register_blueprint(ai_bp)
-
+app.register_blueprint(word_library_bp)
 
 
 def normalize_manual_words(words: list[str]) -> list[str]:
@@ -658,7 +659,7 @@ def api_find_word():
     if current_queue.get("queue_locked"):
         return {
             "ok": False,
-            "message": "今天已经开始学习，不能再手工添加单词。",
+            "message": "今天已经开始学习，不能再手工选词。",
             "queue_locked": True,
         }, 400
     if not word:
@@ -693,7 +694,7 @@ def api_start_study_manual():
     if current_queue.get("queue_locked"):
         return {
             "ok": False,
-            "message": "今天已经开始学习，不能再手工添加单词。",
+            "message": "今天已经开始学习，不能再手工选词。",
             "queue_locked": True,
         }, 400
     if not isinstance(raw_words, list):
@@ -701,7 +702,7 @@ def api_start_study_manual():
 
     manual_words = normalize_manual_words(raw_words)
     if not manual_words:
-        return {"ok": False, "message": "请先至少添加一个单词。"}, 400
+        return {"ok": False, "message": "请先至少选择一个单词。"}, 400
 
     setting = get_user_setting(int(user_id))
     target_word_count = int(setting["target_word_count"]) if setting else 20

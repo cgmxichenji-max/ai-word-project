@@ -57,17 +57,6 @@
     dialog.modeDialogueBtn.style.pointerEvents = visible ? 'auto' : 'none';
   }
 
-  function setEditButtonEnabled(enabled) {
-    const dom = window.homeDom;
-    if (!dom.modeEditBtn) {
-      return;
-    }
-
-    dom.modeEditBtn.disabled = !enabled;
-    dom.modeEditBtn.style.opacity = enabled ? '1' : '0.45';
-    dom.modeEditBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
-    dom.modeEditBtn.style.pointerEvents = enabled ? 'auto' : 'none';
-  }
 
   function resetDialoguePanelView() {
     const dialog = getDialogueElements();
@@ -367,26 +356,6 @@
     });
   }
 
-  function setAltEditing(enabled) {
-    const dom = window.homeDom;
-    const state = window.homeState;
-
-    state.altEditing = Boolean(enabled);
-    if (dom.modeEditBtn) {
-      dom.modeEditBtn.textContent = state.altEditing ? '提交' : '修改内容';
-      dom.modeEditBtn.dataset.editing = state.altEditing ? 'true' : 'false';
-    }
-    if (dom.mainCardAltTip) {
-      dom.mainCardAltTip.textContent = state.altEditing
-        ? '当前可编辑；点击“提交”后，后面再接数据库保存逻辑。'
-        : '默认只读；点击“修改内容”后进入可编辑状态。';
-    }
-    if (dom.mainCardAltEditor) {
-      dom.mainCardAltEditor.readOnly = !state.altEditing;
-      dom.mainCardAltEditor.style.background = state.altEditing ? 'rgba(255, 255, 255, 0.98)' : 'transparent';
-      dom.mainCardAltEditor.style.cursor = state.altEditing ? 'text' : 'default';
-    }
-  }
 
   function renderAltActions(mode) {
     const dom = window.homeDom;
@@ -505,7 +474,6 @@
     const previousMode = state.currentCardMode;
     const normalizedMode = mode === 'info' ? 'word_root' : mode;
     state.currentCardMode = normalizedMode;
-    setAltEditing(false);
 
     if (normalizedMode === 'dialogue' && previousMode !== 'dialogue') {
       window.pauseHomeTtsLoop && window.pauseHomeTtsLoop();
@@ -559,7 +527,7 @@
       dom.mainCardAlt.style.justifyContent = (isDialogueMode || isExampleTestMode) ? 'flex-start' : 'center';
       dom.mainCardAlt.style.paddingTop = (isDialogueMode || isExampleTestMode) ? '8px' : '';
     }
-    setEditButtonEnabled(!(isDialogueMode || isExampleTestMode));
+    // Removed setEditButtonEnabled
     setDialogueButtonVisible(isDialogueMode);
     setExampleTestButtonsVisible(isExamplesMode, isExampleTestMode);
 
@@ -683,22 +651,6 @@
     });
   }
 
-  if (dom.modeEditBtn) {
-    dom.modeEditBtn.addEventListener('click', function () {
-      if (state.currentCardMode === 'dialogue') {
-        return;
-      }
-      if (!state.altEditing) {
-        setAltEditing(true);
-        if (dom.mainCardAltEditor) {
-          dom.mainCardAltEditor.focus();
-        }
-        return;
-      }
-      window.alert('这里先预留为提交到数据库的入口，后面再接正式保存逻辑。');
-      setAltEditing(false);
-    });
-  }
   const dialogueEls = getDialogueElements();
 
   const exampleTestEls = getExampleTestElements();
@@ -826,7 +778,6 @@
   window.getModeContent = getModeContent;
   window.updateModeHeader = updateModeHeader;
   window.updateInfoSubmenuActive = updateInfoSubmenuActive;
-  window.setAltEditing = setAltEditing;
   window.renderAltActions = renderAltActions;
   window.switchCardMode = switchCardMode;
   window.toggleMainCardMeaning = toggleMainCardMeaning;

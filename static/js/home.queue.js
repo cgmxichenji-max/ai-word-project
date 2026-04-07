@@ -236,7 +236,7 @@
 
     if (state.manualSelectedWords.length === 0) {
       const emptyRow = document.createElement('div');
-      emptyRow.textContent = '还没有添加单词。';
+      emptyRow.textContent = '还没有选择单词。';
       emptyRow.style.padding = '10px 12px';
       emptyRow.style.border = '1px dashed #dbe4f3';
       emptyRow.style.borderRadius = '12px';
@@ -302,7 +302,7 @@
     if (state.queueLocked) {
       if (dom.manualLockHint) {
         dom.manualLockHint.style.display = 'block';
-        dom.manualLockHint.textContent = '今天已经开始学习，不能再手工添加单词。';
+        dom.manualLockHint.textContent = '今天已经开始学习，不能再手工选词。';
       }
       return;
     }
@@ -310,7 +310,7 @@
       dom.manualAddPanel.style.display = 'block';
     }
     if (dom.manualAddMessage) {
-      dom.manualAddMessage.textContent = '请输入词库中已有的单词。';
+      dom.manualAddMessage.textContent = '请选择已有词库中的单词；如果系统中没有该单词，请前往“词库编辑”。';
       dom.manualAddMessage.style.color = '#64748b';
     }
     renderManualSelectedList();
@@ -338,7 +338,7 @@
       return;
     }
     if (state.queueLocked) {
-      dom.manualAddMessage.textContent = '今天已经开始学习，不能再手工添加单词。';
+      dom.manualAddMessage.textContent = '今天已经开始学习，不能再手工选词。';
       dom.manualAddMessage.style.color = '#b45309';
       return;
     }
@@ -346,14 +346,14 @@
     const rawWord = dom.manualWordInput.value || '';
     const word = rawWord.trim();
     if (!word) {
-      dom.manualAddMessage.textContent = '请输入单词。';
+      dom.manualAddMessage.textContent = '请输入要选择的单词。';
       dom.manualAddMessage.style.color = '#b45309';
       dom.manualWordInput.focus();
       return;
     }
 
     if (state.manualSelectedWords.length >= state.targetWordCount) {
-      dom.manualAddMessage.textContent = '已达到学习数上限，不能继续添加。';
+      dom.manualAddMessage.textContent = '已达到学习数上限，不能继续选词。';
       dom.manualAddMessage.style.color = '#b45309';
       return;
     }
@@ -363,7 +363,7 @@
       return item.toLowerCase() === normalizedWord;
     });
     if (exists) {
-      dom.manualAddMessage.textContent = '这个单词已经在手工列表里了。';
+      dom.manualAddMessage.textContent = '这个单词已经在手工选词列表里了。';
       dom.manualAddMessage.style.color = '#b45309';
       dom.manualWordInput.focus();
       dom.manualWordInput.select();
@@ -371,7 +371,7 @@
     }
 
     dom.manualAddWordBtn.disabled = true;
-    dom.manualAddMessage.textContent = '正在查询词库...';
+    dom.manualAddMessage.textContent = '正在校验单词是否存在于系统词库...';
     dom.manualAddMessage.style.color = '#64748b';
 
     try {
@@ -382,17 +382,18 @@
       });
 
       const data = await response.json();
-      if (!response.ok || !data.ok || !data.exists) {
-        dom.manualAddMessage.textContent = (data && data.message) ? data.message + ' 目前请重新输入。' : '词库中未找到该单词。';
+      const resolvedWord = String((data && data.word) || '').trim();
+      if (!response.ok || !data || data.ok !== true || data.exists !== true || !resolvedWord) {
+        dom.manualAddMessage.textContent = '该单词不在当前系统词库，请前往“词库编辑”新建。';
         dom.manualAddMessage.style.color = '#b45309';
         dom.manualWordInput.focus();
         dom.manualWordInput.select();
         return;
       }
 
-      state.manualSelectedWords.push(String(data.word || word).trim());
+      state.manualSelectedWords.push(resolvedWord);
       dom.manualWordInput.value = '';
-      dom.manualAddMessage.textContent = '已加入手工列表：' + String(data.word || word).trim();
+      dom.manualAddMessage.textContent = '已加入手工选词列表：' + resolvedWord;
       dom.manualAddMessage.style.color = '#166534';
       renderManualSelectedList();
       if (dom.manualSelectedList) {
@@ -453,13 +454,27 @@
       return;
     }
     if (state.queueLocked) {
-      dom.manualAddMessage.textContent = '今天已经开始学习，不能再手工添加单词。';
+      dom.manualAddMessage.textContent = '今天已经开始学习，不能再手工选词。';
       dom.manualAddMessage.style.color = '#b45309';
       return;
     }
 
+    const normalizedWords = state.manualSelectedWords
+      .map(function (item) {
+        return String(item || '').trim();
+      })
+      .filter(function (item) {
+        return item !== '';
+      });
+
+    state.manualSelectedWords = normalizedWords.filter(function (item, index) {
+      return normalizedWords.findIndex(function (x) {
+        return x.toLowerCase() === item.toLowerCase();
+      }) === index;
+    });
+
     if (state.manualSelectedWords.length === 0) {
-      dom.manualAddMessage.textContent = '请先至少添加一个单词。';
+      dom.manualAddMessage.textContent = '请先至少选择一个单词。';
       dom.manualAddMessage.style.color = '#b45309';
       return;
     }
@@ -473,13 +488,13 @@
       const response = await fetch('/api/start-study-manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ words: state.manualSelectedWords })
+        body: JSON.stringify({ words: state.manualSelectedWords.slice() })
       });
 
       const data = await response.json();
       if (!response.ok || !data.ok) {
         if (data && data.missing_words && data.missing_words.length > 0) {
-          dom.manualAddMessage.textContent = '以下单词不在词库中：' + data.missing_words.join('、');
+          dom.manualAddMessage.textContent = '存在不在系统词库中的单词，请前往“词库编辑”处理：' + data.missing_words.join('、');
         } else {
           dom.manualAddMessage.textContent = (data && data.message) ? data.message : '手工开始失败，请重试。';
         }
@@ -524,6 +539,11 @@
   if (dom.showManualPanelBtn) {
     dom.showManualPanelBtn.addEventListener('click', openManualPanel);
   }
+  if (dom.showWordLibraryBtn) {
+    dom.showWordLibraryBtn.addEventListener('click', function () {
+      window.location.href = '/word-library';
+    });
+  }
 
   if (dom.manualAddWordBtn) {
     dom.manualAddWordBtn.addEventListener('click', addManualWord);
@@ -543,7 +563,7 @@
       window.homeState.manualSelectedWords = [];
       renderManualSelectedList();
       if (dom.manualAddMessage) {
-        dom.manualAddMessage.textContent = '已清空手工列表。';
+        dom.manualAddMessage.textContent = '已清空手工选词列表。';
         dom.manualAddMessage.style.color = '#64748b';
       }
     });

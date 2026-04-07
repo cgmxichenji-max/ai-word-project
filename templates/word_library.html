@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>词库编辑</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #0f172a;
+    }
+
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 28px 16px 48px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 800;
+      margin: 0;
+    }
+
+    .desc {
+      margin: 8px 0 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: #475569;
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px;
+      border: 1px solid #dbe4f3;
+      border-radius: 12px;
+      background: #ffffff;
+      color: #334155;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #dbe4f3;
+      border-radius: 18px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+      padding: 22px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 800;
+      margin: 0 0 14px;
+      color: #0f172a;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      color: #334155;
+      margin-bottom: 8px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 12px 14px;
+      border: 1px solid #dbe4f3;
+      border-radius: 12px;
+      background: #ffffff;
+      color: #111827;
+      font-size: 15px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    .hint {
+      font-size: 13px;
+      line-height: 1.7;
+      color: #64748b;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .primary-btn,
+    .ghost-btn {
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .primary-btn {
+      border: 0;
+      background: #2563eb;
+      color: #ffffff;
+    }
+
+    .ghost-btn {
+      border: 1px solid #dbe4f3;
+      background: #ffffff;
+      color: #475569;
+    }
+
+    .two-col-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .table-card {
+      border: 1px solid #dbe4f3;
+      border-radius: 14px;
+      background: #f8fbff;
+      padding: 12px;
+    }
+
+    .table-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #334155;
+      margin: 0 0 10px;
+    }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    table.data-table th,
+    table.data-table td {
+      border: 1px solid #e2e8f0;
+      padding: 8px;
+      vertical-align: top;
+      text-align: left;
+      font-size: 13px;
+      color: #334155;
+    }
+
+    table.data-table th {
+      background: #f1f5f9;
+      font-weight: 700;
+    }
+
+    .table-input {
+      width: 100%;
+      min-height: 70px;
+      box-sizing: border-box;
+      border: 1px solid #dbe4f3;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+      resize: vertical;
+      background: #ffffff;
+      color: #111827;
+    }
+
+    .table-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .mini-btn {
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid #dbe4f3;
+      background: #ffffff;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .empty-table-tip {
+      padding: 12px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      background: #ffffff;
+      color: #64748b;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1 class="title">词库编辑</h1>
+        <p class="desc">当前页面用于维护用户私有词库：优先查用户词库，再查系统词库，都没有时允许新建。</p>
+      </div>
+      <a class="back-link" href="/home">返回首页</a>
+    </div>
+
+    <div class="card">
+      <h2 class="section-title">查询 / 新建单词</h2>
+
+      <div class="form-grid">
+        <div>
+          <label for="custom-word">单词</label>
+          <input id="custom-word" type="text" placeholder="输入单词后点击查询">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="lookup-btn" class="primary-btn" type="button">查询</button>
+        <button id="reset-btn" class="ghost-btn" type="button">清空</button>
+      </div>
+      <div id="source-status" class="hint" style="margin-top:10px;font-weight:700;color:#334155;"></div>
+
+      <hr style="margin:18px 0;border:none;border-top:1px solid #e2e8f0;">
+
+      <h2 class="section-title">单词信息</h2>
+
+      <div class="form-grid">
+        <div>
+          <label for="custom-meaning">词义</label>
+          <textarea id="custom-meaning" placeholder="这里填写词义"></textarea>
+        </div>
+      </div>
+
+      <div class="two-col-grid" style="margin-top:14px;">
+        <div>
+          <label for="custom-word-root">词根</label>
+          <textarea id="custom-word-root" placeholder="这里填写词根"></textarea>
+        </div>
+        <div>
+          <label for="custom-affix">词缀</label>
+          <textarea id="custom-affix" placeholder="这里填写词缀"></textarea>
+        </div>
+        <div>
+          <label for="custom-history">背景 / 历史</label>
+          <textarea id="custom-history" placeholder="这里填写背景或历史"></textarea>
+        </div>
+        <div>
+          <label for="custom-forms">变形</label>
+          <textarea id="custom-forms" placeholder="这里填写变形"></textarea>
+        </div>
+      </div>
+
+      <div class="form-grid" style="margin-top:14px;">
+        <div>
+          <label for="custom-memory-tip">记忆提示</label>
+          <textarea id="custom-memory-tip" placeholder="这里填写记忆提示"></textarea>
+        </div>
+      </div>
+
+      <div class="two-col-grid" style="margin-top:18px;">
+        <div class="table-card">
+          <h3 class="table-title">例句（多条记录，横向表）</h3>
+          <div id="examples-empty" class="empty-table-tip">暂无例句，可点击下方按钮新增一行。</div>
+          <table class="data-table" id="examples-table" style="display:none;">
+            <thead>
+              <tr>
+                <th style="width:50%;">英文例句</th>
+                <th style="width:50%;">中文例句</th>
+              </tr>
+            </thead>
+            <tbody id="examples-tbody"></tbody>
+          </table>
+          <div class="table-actions">
+            <button class="mini-btn" type="button" onclick="addExampleRow()">新增例句行</button>
+            <button class="mini-btn" type="button" onclick="clearExampleRows()">清空例句</button>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <h3 class="table-title">故事（多条记录，横向表）</h3>
+          <div id="stories-empty" class="empty-table-tip">暂无故事，可点击下方按钮新增一行。</div>
+          <table class="data-table" id="stories-table" style="display:none;">
+            <thead>
+              <tr>
+                <th style="width:50%;">英文故事</th>
+                <th style="width:50%;">中文故事</th>
+              </tr>
+            </thead>
+            <tbody id="stories-tbody"></tbody>
+          </table>
+          <div class="table-actions">
+            <button class="mini-btn" type="button" onclick="addStoryRow()">新增故事行</button>
+            <button class="mini-btn" type="button" onclick="clearStoryRows()">清空故事</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="hint">逻辑：先查 user_words，没有再查 words。无论查到与否，meaning、word_root、affix、history、forms、memory_tip 都可直接查看或修改；examples 和 stories 以多行横向表形式维护。</p>
+
+      <div class="actions">
+        <button id="save-btn" class="primary-btn" type="button">保存到我的词库</button>
+        <button class="ghost-btn" type="button" onclick="window.location.href='/home'">返回</button>
+      </div>
+
+      <div id="status" class="hint" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <script>
+    function setValue(id, value) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.value = value || '';
+      }
+    }
+
+    function renderExamplesTable(rows) {
+      const tbody = document.getElementById('examples-tbody');
+      const table = document.getElementById('examples-table');
+      const empty = document.getElementById('examples-empty');
+      const safeRows = Array.isArray(rows) ? rows : [];
+
+      tbody.innerHTML = '';
+
+      if (!safeRows.length) {
+        table.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+
+      empty.style.display = 'none';
+      table.style.display = 'table';
+
+      safeRows.forEach(function (item) {
+        const tr = document.createElement('tr');
+
+        const tdEn = document.createElement('td');
+        const inputEn = document.createElement('textarea');
+        inputEn.className = 'table-input';
+        inputEn.value = String((item && item.example_en) || '').trim();
+        tdEn.appendChild(inputEn);
+
+        const tdZh = document.createElement('td');
+        const inputZh = document.createElement('textarea');
+        inputZh.className = 'table-input';
+        inputZh.value = String((item && item.example_zh) || '').trim();
+        tdZh.appendChild(inputZh);
+
+        tr.appendChild(tdEn);
+        tr.appendChild(tdZh);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderStoriesTable(rows) {
+      const tbody = document.getElementById('stories-tbody');
+      const table = document.getElementById('stories-table');
+      const empty = document.getElementById('stories-empty');
+      const safeRows = Array.isArray(rows) ? rows : [];
+
+      tbody.innerHTML = '';
+
+      if (!safeRows.length) {
+        table.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+
+      empty.style.display = 'none';
+      table.style.display = 'table';
+
+      safeRows.forEach(function (item) {
+        const tr = document.createElement('tr');
+
+        const tdEn = document.createElement('td');
+        const inputEn = document.createElement('textarea');
+        inputEn.className = 'table-input';
+        inputEn.value = String((item && item.story_en) || '').trim();
+        tdEn.appendChild(inputEn);
+
+        const tdZh = document.createElement('td');
+        const inputZh = document.createElement('textarea');
+        inputZh.className = 'table-input';
+        inputZh.value = String((item && item.story_zh) || '').trim();
+        tdZh.appendChild(inputZh);
+
+        tr.appendChild(tdEn);
+        tr.appendChild(tdZh);
+        tbody.appendChild(tr);
+      });
+    }
+
+    function addExampleRow() {
+      const tbody = document.getElementById('examples-tbody');
+      const current = [];
+      Array.from(tbody.querySelectorAll('tr')).forEach(function (tr) {
+        const tds = tr.querySelectorAll('textarea');
+        current.push({
+          example_en: tds[0] ? tds[0].value : '',
+          example_zh: tds[1] ? tds[1].value : ''
+        });
+      });
+      current.push({ example_en: '', example_zh: '' });
+      renderExamplesTable(current);
+    }
+
+    function clearExampleRows() {
+      renderExamplesTable([]);
+    }
+
+    function addStoryRow() {
+      const tbody = document.getElementById('stories-tbody');
+      const current = [];
+      Array.from(tbody.querySelectorAll('tr')).forEach(function (tr) {
+        const tds = tr.querySelectorAll('textarea');
+        current.push({
+          story_en: tds[0] ? tds[0].value : '',
+          story_zh: tds[1] ? tds[1].value : ''
+        });
+      });
+      current.push({ story_en: '', story_zh: '' });
+      renderStoriesTable(current);
+    }
+
+    function clearStoryRows() {
+      renderStoriesTable([]);
+    }
+
+    function fillFormFromUserWord(data) {
+      setValue('custom-meaning', data.meaning || '');
+      setValue('custom-word-root', data.word_root || '');
+      setValue('custom-affix', data.affix || '');
+      setValue('custom-history', data.history || '');
+      setValue('custom-forms', data.forms || '');
+      setValue('custom-memory-tip', data.memory_tip || '');
+      renderExamplesTable(data.examples || []);
+      renderStoriesTable(data.stories || []);
+    }
+
+    function fillFormFromSystemWord(data) {
+      setValue('custom-meaning', data.meaning || '');
+      setValue('custom-word-root', data.word_root || '');
+      setValue('custom-affix', data.affix || '');
+      setValue('custom-history', data.history || '');
+      setValue('custom-forms', data.forms || '');
+      setValue('custom-memory-tip', data.memory_tip || '');
+      renderExamplesTable(data.examples || []);
+      renderStoriesTable(data.stories || []);
+    }
+
+    async function lookupWord() {
+      const word = document.getElementById('custom-word').value.trim();
+      const status = document.getElementById('status');
+
+      if (!word) {
+        status.textContent = '请输入单词';
+        return;
+      }
+
+      status.textContent = '查询中...';
+
+      try {
+        const res = await fetch('/api/word-library/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: word })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data || data.ok !== true) {
+          status.textContent = (data && data.message) ? data.message : '查询失败';
+          return;
+        }
+
+        document.getElementById('custom-word').value = data.word || word;
+        document.getElementById('source-status').textContent = data.source_label || '';
+
+        if (data.source === 'user') {
+          fillFormFromUserWord(data);
+          status.textContent = '已从用户词库加载';
+          return;
+        }
+
+        if (data.source === 'system') {
+          fillFormFromSystemWord(data);
+          status.textContent = '已从系统词库加载；你可以直接修改后再保存到我的词库';
+          return;
+        }
+
+        fillFormFromSystemWord(data);
+        status.textContent = '用户词库和系统词库都不存在该单词，可直接新建';
+      } catch (e) {
+        status.textContent = '查询失败';
+      }
+    }
+
+    function resetForm() {
+      setValue('custom-word', '');
+      setValue('custom-meaning', '');
+      setValue('custom-word-root', '');
+      setValue('custom-affix', '');
+      setValue('custom-history', '');
+      setValue('custom-forms', '');
+      setValue('custom-memory-tip', '');
+      renderExamplesTable([]);
+      renderStoriesTable([]);
+      document.getElementById('source-status').textContent = '';
+      document.getElementById('status').textContent = '';
+    }
+
+    function collectExamples() {
+      const rows = [];
+      Array.from(document.querySelectorAll('#examples-tbody tr')).forEach(function (tr) {
+        const tds = tr.querySelectorAll('textarea');
+        rows.push({
+          example_en: tds[0] ? tds[0].value.trim() : '',
+          example_zh: tds[1] ? tds[1].value.trim() : ''
+        });
+      });
+      return rows;
+    }
+
+    function collectStories() {
+      const rows = [];
+      Array.from(document.querySelectorAll('#stories-tbody tr')).forEach(function (tr) {
+        const tds = tr.querySelectorAll('textarea');
+        rows.push({
+          story_en: tds[0] ? tds[0].value.trim() : '',
+          story_zh: tds[1] ? tds[1].value.trim() : ''
+        });
+      });
+      return rows;
+    }
+
+    async function saveWord() {
+      const word = document.getElementById('custom-word').value.trim();
+      const meaning = document.getElementById('custom-meaning').value.trim();
+      const status = document.getElementById('status');
+      const saveBtn = document.getElementById('save-btn');
+
+      if (!word) {
+        status.textContent = '单词不能为空。';
+        return;
+      }
+      if (!meaning) {
+        status.textContent = '词义不能为空。';
+        return;
+      }
+
+      saveBtn.disabled = true;
+      status.textContent = '保存中...';
+
+      const payload = {
+        word: word,
+        meaning: meaning,
+        word_root: document.getElementById('custom-word-root').value.trim(),
+        affix: document.getElementById('custom-affix').value.trim(),
+        history: document.getElementById('custom-history').value.trim(),
+        forms: document.getElementById('custom-forms').value.trim(),
+        memory_tip: document.getElementById('custom-memory-tip').value.trim(),
+        examples: collectExamples(),
+        stories: collectStories()
+      };
+
+      try {
+        const res = await fetch('/api/word-library/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data || data.ok !== true) {
+          status.textContent = (data && data.message) ? data.message : '保存失败';
+          saveBtn.disabled = false;
+          return;
+        }
+
+        status.textContent = data.message || '已保存到我的词库。';
+        document.getElementById('source-status').textContent = '当前显示：用户词库';
+        // 重新查询以确保界面和数据库一致
+        await lookupWord();
+      } catch (e) {
+        status.textContent = '保存失败：网络错误';
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+
+    document.getElementById('lookup-btn').addEventListener('click', lookupWord);
+    document.getElementById('reset-btn').addEventListener('click', resetForm);
+    document.getElementById('save-btn').addEventListener('click', saveWord);
+    document.getElementById('custom-word').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        lookupWord();
+      }
+    });
+    renderExamplesTable([]);
+    renderStoriesTable([]);
+  </script>
+</body>
+</html>

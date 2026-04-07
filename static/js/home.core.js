@@ -5,6 +5,7 @@
     startModePanel: document.getElementById('start-mode-panel'),
     startRandomBtn: document.getElementById('start-random-btn'),
     showManualPanelBtn: document.getElementById('show-manual-panel-btn'),
+    showWordLibraryBtn: document.getElementById('show-word-library-btn'),
     manualLockHint: document.getElementById('manual-lock-hint'),
     manualAddPanel: document.getElementById('manual-add-panel'),
     manualWordInput: document.getElementById('manual-word-input'),

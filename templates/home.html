@@ -61,26 +61,33 @@
               {% if queue_locked %}disabled{% endif %}
               style="padding: 16px 28px; border: 1px solid #dbe4f3; border-radius: 16px; background: {% if queue_locked %}#f8fafc{% else %}#ffffff{% endif %}; color: {% if queue_locked %}#94a3b8{% else %}#334155{% endif %}; font-size: 18px; font-weight: 700; cursor: {% if queue_locked %}not-allowed{% else %}pointer{% endif %}; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);"
             >
-              手工添加
+              手工选词
+            </button>
+            <button
+              id="show-word-library-btn"
+              type="button"
+              style="padding: 16px 28px; border: 1px solid #dbe4f3; border-radius: 16px; background: #ffffff; color: #334155; font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);"
+            >
+              词库编辑
             </button>
           </div>
 
           {% if queue_locked %}
             <div id="manual-lock-hint" style="font-size: 14px; color: #64748b; text-align: center; line-height: 1.7;">
-              今天已经开始学习，手工添加已关闭。
+              今天已经开始学习，手工选词已关闭。
             </div>
           {% else %}
             <div id="manual-lock-hint" style="display: none;"></div>
           {% endif %}
 
           <div id="manual-add-panel" style="display: none; width: min(92%, 560px); padding: 18px; border: 1px solid #dbe4f3; border-radius: 18px; background: #f8fbff; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);">
-            <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">手工添加单词</div>
+            <div style="font-size: 16px; font-weight: 700; color: #0f172a; margin-bottom: 12px;">手工选词</div>
 
             <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;">
               <input
                 id="manual-word-input"
                 type="text"
-                placeholder="请输入词库中已有的单词"
+                placeholder="请输入词库中已有的单词进行选择"
                 style="flex: 1 1 240px; min-width: 220px; padding: 12px 14px; border: 1px solid #dbe4f3; border-radius: 12px; background: #ffffff; color: #111827; font-size: 15px; outline: none;"
               >
               <button
@@ -92,7 +99,7 @@
               </button>
             </div>
 
-            <div id="manual-add-message" style="min-height: 22px; color: #64748b; font-size: 14px; margin-bottom: 12px;">当前只做手工列表骨架，后面再接词库查询和正式入库。</div>
+            <div id="manual-add-message" style="min-height: 22px; color: #64748b; font-size: 14px; margin-bottom: 12px;">当前页面只负责从已有词库中手工选词；如果系统中没有该单词，请前往“词库编辑”。</div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; flex-wrap: wrap;">
               <div style="font-size: 14px; color: #334155; font-weight: 600;">已选单词：<span id="manual-selected-count">0</span> / {{ target_word_count }}</div>
@@ -148,14 +155,6 @@
                   style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;"
                 >
                   返回单词
-                </button>
-                <button
-                  id="mode-edit-btn"
-                  type="button"
-                  data-editing="false"
-                  style="padding: 8px 14px; border: 1px solid #dbe4f3; border-radius: 999px; background: #ffffff; color: #475569; font-size: 13px; font-weight: 700; cursor: pointer;"
-                >
-                  修改内容
                 </button>
                 <button
                   id="mode-dialogue-btn"
@@ -322,7 +321,7 @@
                   </div>
                 </div>
                 <div id="main-card-alt-footer" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                  <div id="main-card-alt-tip" style="font-size: 13px; color: #475569; line-height: 1.6;">默认只读；点击“修改内容”后进入可编辑状态。</div>
+                  <div id="main-card-alt-tip" style="font-size: 13px; color: #475569; line-height: 1.6;">当前页面只用于学习与查看内容。</div>
                   <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <div id="dictation-feedback" style="display: none; font-size: 13px; color: #475569; line-height: 1.6; min-height: 1.6em;"></div>
                     <div id="dialogue-feedback" style="display: none; font-size: 13px; color: #475569; line-height: 1.6; min-height: 1.6em;"></div>
