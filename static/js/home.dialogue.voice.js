@@ -12,7 +12,9 @@
     context: null,
     currentWordId: null,
     currentWord: '',
-    speechEnabled: true
+    speechEnabled: true,
+    autoVoiceMode: true,
+    shouldResumeListening: false
   };
 
   state.exampleSpeechRunId = state.exampleSpeechRunId || 0;
@@ -86,11 +88,12 @@
       );
       const els = getDialogueElements();
       if (els.dialogueInput) {
-        els.dialogueInput.value = transcript;
+        els.dialogueInput.value = '';
         els.dialogueInput.focus();
       }
       if (transcript) {
-        setDialogueFeedback('已识别语音，可直接发送。', false);
+        setDialogueFeedback('已识别语音，正在自动发送。', false);
+        sendDialogueMessage(transcript);
       }
     };
 
@@ -144,6 +147,12 @@
   function speakDialogueText(text) {
     const content = cleanText(text);
     if (!content || !state.dialogueState.speechEnabled || !window.speechSynthesis) {
+      if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
+        state.dialogueState.shouldResumeListening = false;
+        window.setTimeout(function () {
+          startVoiceInput();
+        }, 150);
+      }
       return;
     }
 
@@ -153,9 +162,30 @@
       utterance.lang = 'en-US';
       utterance.rate = 0.95;
       utterance.pitch = 1;
+      utterance.onend = function () {
+        if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
+          state.dialogueState.shouldResumeListening = false;
+          window.setTimeout(function () {
+            startVoiceInput();
+          }, 150);
+        }
+      };
+      utterance.onerror = function () {
+        if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
+          state.dialogueState.shouldResumeListening = false;
+          window.setTimeout(function () {
+            startVoiceInput();
+          }, 150);
+        }
+      };
       window.speechSynthesis.speak(utterance);
     } catch (err) {
-      // ignore speech errors
+      if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
+        state.dialogueState.shouldResumeListening = false;
+        window.setTimeout(function () {
+          startVoiceInput();
+        }, 150);
+      }
     }
   }
 
@@ -353,6 +383,7 @@
     state.dialogueState.context = null;
     state.dialogueState.currentWordId = null;
     state.dialogueState.currentWord = '';
+    state.dialogueState.shouldResumeListening = false;
 
     if (!opts.keepUi) {
       renderDialogueHistory();
@@ -439,10 +470,12 @@
       if (parsed && cleanText(parsed.reply)) {
         const assistantReply = cleanText(parsed.reply);
         state.dialogueState.history.push({ role: 'assistant', text: assistantReply });
+        state.dialogueState.shouldResumeListening = true;
         speakDialogueText(assistantReply);
       } else {
         const fallbackReply = '对话已开始，但 AI 没有返回有效内容。';
         state.dialogueState.history.push({ role: 'assistant', text: fallbackReply });
+        state.dialogueState.shouldResumeListening = true;
         speakDialogueText(fallbackReply);
       }
 
@@ -464,13 +497,13 @@
     }
   }
 
-  async function sendDialogueMessage() {
+    async function sendDialogueMessage(forcedMessage) {
     if (state.dialogueState.loading) {
       return;
     }
 
     const els = getDialogueElements();
-    const inputValue = cleanText(els.dialogueInput && els.dialogueInput.value);
+    const inputValue = cleanText(forcedMessage || (els.dialogueInput && els.dialogueInput.value));
     if (!inputValue) {
       setDialogueFeedback('请输入你的回答。', true);
       return;
@@ -508,10 +541,12 @@
 
       if (replyText) {
         state.dialogueState.history.push({ role: 'assistant', text: replyText });
+        state.dialogueState.shouldResumeListening = nextStage !== 'done';
         speakDialogueText(replyText);
       } else {
         const fallbackReply = 'AI 没有返回有效回复。';
         state.dialogueState.history.push({ role: 'assistant', text: fallbackReply });
+        state.dialogueState.shouldResumeListening = nextStage !== 'done';
         speakDialogueText(fallbackReply);
       }
 
@@ -556,7 +591,23 @@
       });
 
       if (nextStage === 'done') {
-        setDialogueFeedback('本轮对话已完成。', false);
+        const currentDialogueProgress = progressState
+          ? Math.min(3, Number(progressState.dialogueProgress || 0))
+          : 0;
+
+        if (currentDialogueProgress < 3) {
+          const continueReply = '当前这轮已结束，但进度还没满。我们继续下一轮，请再根据提示回答。';
+          state.dialogueState.stage = 'guess';
+          state.dialogueState.started = true;
+          state.dialogueState.shouldResumeListening = true;
+          state.dialogueState.history.push({ role: 'assistant', text: continueReply });
+          renderDialogueHistory();
+          setDialogueStageHint('guess');
+          speakDialogueText(continueReply);
+          setDialogueFeedback('本轮通过，已自动继续下一轮。', false);
+        } else {
+          setDialogueFeedback('本轮对话已完成。', false);
+        }
       } else {
         setDialogueFeedback(
           progressDelta > 0
@@ -580,7 +631,9 @@
 
       if (els.dialogueInput) {
         els.dialogueInput.value = '';
-        els.dialogueInput.focus();
+        if (!state.dialogueState.autoVoiceMode) {
+          els.dialogueInput.focus();
+        }
       }
     } catch (err) {
       setDialogueFeedback(err && err.message ? err.message : '发送失败。', true);
@@ -590,6 +643,15 @@
   }
 
   function endDialogue() {
+    state.dialogueState.shouldResumeListening = false;
+    stopVoiceInput();
+    if (window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (err) {
+        // ignore
+      }
+    }
     resetDialogueState({ keepUi: false });
     setDialogueFeedback('已结束当前对话。', false);
     renderDialogueHistory();
@@ -601,9 +663,13 @@
     if (els.modeDialogueBtn && !els.modeDialogueBtn.dataset.dialogueBound) {
       els.modeDialogueBtn.dataset.dialogueBound = 'true';
       els.modeDialogueBtn.addEventListener('click', function () {
+        state.dialogueState.autoVoiceMode = true;
+        state.dialogueState.shouldResumeListening = false;
         window.setTimeout(function () {
           if (!state.dialogueState.started) {
             startDialogue();
+          } else if (!state.dialogueState.isListening && !state.dialogueState.loading) {
+            startVoiceInput();
           }
         }, 0);
       });

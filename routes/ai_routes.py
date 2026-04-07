@@ -392,8 +392,10 @@ def api_progress_event():
         leveled_up = False
         today_str = datetime.now().strftime("%Y-%m-%d")
         last_review_date = current_last_review_at[:10] if current_last_review_at else ""
+        next_review_date = current_next_review_at[:10] if current_next_review_at else ""
+        review_due = bool(next_review_date) and next_review_date <= today_str
 
-        if progress_value >= max_progress and max_progress > 0 and last_review_date != today_str:
+        if progress_value >= max_progress and max_progress > 0 and review_due and last_review_date != today_str:
             increment_user_word_level(user_id, word, 1)
             current_row = get_user_word_row(user_id, word)
             current_level = int((current_row["level"] if current_row and "level" in current_row.keys() else current_level) or current_level)
@@ -420,6 +422,7 @@ def api_progress_event():
             "level": current_level,
             "last_review_at": current_last_review_at,
             "next_review_at": current_next_review_at,
+            "review_due": review_due,
             "note": "progress_event_saved",
         })
     except Exception as e:

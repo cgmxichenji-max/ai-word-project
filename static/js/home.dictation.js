@@ -59,22 +59,41 @@
 
       if (data.is_correct) {
         const progressState = window.ensureWordProgressState(targetWord);
+        let progressDelta = 0;
+
         if (progressState) {
-          progressState.progress = Math.min(state.MAX_PROGRESS, Number(progressState.progress || 0) + 1);
+          const dictationProgress = Math.min(3, Number(progressState.dictationProgress || 0));
+
+          if (dictationProgress < 3) {
+            progressState.dictationProgress = dictationProgress + 1;
+            progressState.progress = Math.min(
+              state.MAX_PROGRESS,
+              Number(progressState.progress || 0) + 1
+            );
+            progressDelta = 1;
+          } else {
+            progressState.dictationProgress = 3;
+          }
         }
-        state.currentProgress = progressState ? progressState.progress : state.currentProgress;
+
+        state.currentProgress = progressState ? Number(progressState.progress || 0) : state.currentProgress;
         window.updateStudyProgressUI();
 
         await reportProgressEvent({
           word: targetWord,
           source: 'dictation',
           is_correct: true,
-          progress_delta: 1,
+          progress_delta: progressDelta,
           progress_value: progressState ? progressState.progress : state.currentProgress,
           max_progress: state.MAX_PROGRESS
         });
 
-        window.setDictationFeedback('拼写正确，进度 +1', true);
+        window.setDictationFeedback(
+          progressDelta > 0
+            ? '拼写正确，默写进度 +1'
+            : '拼写正确，但当前单词默写进度已满 3',
+          true
+        );
       } else {
         await reportProgressEvent({
           word: targetWord,

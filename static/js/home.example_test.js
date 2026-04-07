@@ -16,7 +16,9 @@
     speechEnabled: true,
     pendingMicStart: false,
     recognitionStartTimer: null,
-    activeUtterance: null
+    activeUtterance: null,
+    autoVoiceMode: true,
+    shouldAutoRestartMic: false
   };
 
   function getExampleTestElements() {
@@ -67,6 +69,9 @@
     els.exampleTestFeedback.style.display = value ? 'block' : 'none';
     els.exampleTestFeedback.textContent = value;
     els.exampleTestFeedback.style.color = isError ? '#b91c1c' : '#475569';
+    els.exampleTestFeedback.style.whiteSpace = 'nowrap';
+    els.exampleTestFeedback.style.overflow = 'hidden';
+    els.exampleTestFeedback.style.textOverflow = 'ellipsis';
   }
 
   function setExampleTestStageHint(text) {
@@ -444,8 +449,15 @@
       clearRecognitionStartTimer();
       state.exampleTestState.isListening = false;
       updateMicButtonState();
-      setExampleTestFeedback('语音识别失败：' + (event && event.error ? event.error : 'unknown'), true);
-      logExampleTest('recognition error', event && event.error ? event.error : 'unknown');
+
+      const errorCode = event && event.error ? event.error : 'unknown';
+      if (errorCode === 'aborted') {
+        logExampleTest('recognition aborted');
+        return;
+      }
+
+      setExampleTestFeedback('语音识别失败：' + errorCode, true);
+      logExampleTest('recognition error', errorCode);
     };
 
     recognition.onresult = function (event) {
@@ -457,12 +469,14 @@
       const els = getExampleTestElements();
 
       if (els.exampleTestInput) {
-        els.exampleTestInput.value = transcript;
-        els.exampleTestInput.focus();
+        els.exampleTestInput.value = '';
       }
 
       if (transcript) {
-        setExampleTestFeedback('已识别当前回答，可直接提交。', false);
+        setExampleTestFeedback('已识别当前回答，正在自动提交。', false);
+        logExampleTest('recognition result', transcript);
+        submitExampleTest(transcript);
+        return;
       }
 
       logExampleTest('recognition result', transcript);
@@ -621,6 +635,30 @@
       return;
     }
 
+    const progressState = window.ensureWordProgressState
+      ? window.ensureWordProgressState(state.exampleTestState.testWord)
+      : null;
+    const currentExampleTestProgress = progressState
+      ? Math.min(3, Number(progressState.exampleTestProgress || 0))
+      : 0;
+
+    if (currentExampleTestProgress < 3) {
+      state.exampleTestState.currentExampleIndex = 0;
+      state.exampleTestState.currentExampleText = '';
+      state.exampleTestState.pendingMicStart = false;
+      state.exampleTestState.history.push({
+        role: 'assistant',
+        text: '当前这一轮例句已结束，但进度还没满。现在自动开始下一轮。'
+      });
+      renderExampleTestHistory();
+      setExampleTestStageHint('当前单词例句进度未满 3，已自动开始下一轮。');
+      setExampleTestFeedback('本轮完成，但进度未满 3，已自动进入下一轮。', false);
+      updateMicButtonState();
+      logExampleTest('all examples completed but progress not full, restart round', currentExampleTestProgress);
+      speakCurrentExample();
+      return;
+    }
+
     stopVoiceInput();
     state.exampleTestState.running = false;
     setExampleTestStageHint('本轮例句测试已完成。');
@@ -634,9 +672,9 @@
     logExampleTest('all examples completed');
   }
 
-  async function submitExampleTest() {
+  async function submitExampleTest(forcedAnswer) {
     const els = getExampleTestElements();
-    const answer = cleanText(els.exampleTestInput && els.exampleTestInput.value);
+    const answer = cleanText(forcedAnswer || (els.exampleTestInput && els.exampleTestInput.value));
     const currentExample = cleanText(state.exampleTestState.currentExampleText);
     const currentNo = getCurrentExampleNumber();
     const total = getCurrentExampleTotal();
@@ -759,6 +797,13 @@
         setExampleTestFeedback(feedback || ('第 ' + currentNo + ' 句未通过，请继续回答当前句。'), true);
         setExampleTestStageHint('第 ' + currentNo + ' / ' + total + ' 句未通过，请继续回答当前句的大意。');
         if (els.exampleTestInput) {
+          els.exampleTestInput.value = '';
+        }
+        if (state.exampleTestState.running && state.exampleTestState.autoVoiceMode) {
+          window.setTimeout(function () {
+            startVoiceInput({ immediate: true });
+          }, 180);
+        } else if (els.exampleTestInput) {
           els.exampleTestInput.focus();
         }
       }
@@ -768,6 +813,13 @@
       renderExampleTestHistory();
       setExampleTestFeedback(message, true);
       if (els.exampleTestInput) {
+        els.exampleTestInput.value = '';
+      }
+      if (state.exampleTestState.running && state.exampleTestState.autoVoiceMode) {
+        window.setTimeout(function () {
+          startVoiceInput({ immediate: true });
+        }, 180);
+      } else if (els.exampleTestInput) {
         els.exampleTestInput.focus();
       }
     } finally {
@@ -788,6 +840,7 @@
     state.exampleTestState.currentExampleIndex = 0;
     state.exampleTestState.currentExampleText = '';
     state.exampleTestState.pendingMicStart = false;
+    state.exampleTestState.shouldAutoRestartMic = false;
 
     const els = getExampleTestElements();
     if (els.exampleTestInput) {
@@ -844,6 +897,7 @@
     state.exampleTestState.selectedExamples = selectedExamples.slice();
     state.exampleTestState.currentExampleIndex = 0;
     state.exampleTestState.currentExampleText = '';
+    state.exampleTestState.shouldAutoRestartMic = false;
 
     state.exampleTestState.history.push({
       role: 'assistant',
@@ -882,6 +936,7 @@
       els.modeExampleTestBtn.dataset.bound = 'true';
       els.modeExampleTestBtn.addEventListener('click', function () {
         window.pauseHomeTtsLoop && window.pauseHomeTtsLoop();
+        state.exampleTestState.autoVoiceMode = true;
         setExampleTestFeedback('正在准备单句测试，请稍候。', false);
         startExampleTest().catch(function (err) {
           const message = err && err.message ? err.message : '准备例句测试失败，请重试。';
@@ -894,6 +949,7 @@
     if (els.exampleTestMicBtn && !els.exampleTestMicBtn.dataset.bound) {
       els.exampleTestMicBtn.dataset.bound = 'true';
       els.exampleTestMicBtn.addEventListener('click', function (event) {
+        state.exampleTestState.autoVoiceMode = false;
         if (event) {
           event.preventDefault();
         }

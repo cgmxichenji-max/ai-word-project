@@ -57,22 +57,32 @@ def get_today_queue_date_str() -> str:
 
 def calculate_queue_quota(target_word_count: int) -> dict:
     """
-    第一版配额规则：
-    - 小词池（<10）：复习 60%，新词 40%
-    - 大词池（>=10）：复习 70%，新词 30%
+    当前配额规则：
+    - 新词固定按总数的 2/5 计算
+    - 复习词 = 剩余数量
+    - 至少保留 1 个新词（当 target_word_count > 0 时）
+
+    例：
+    - 3 个词 -> 新词 1，复习 2
+    - 5 个词 -> 新词 2，复习 3
+    - 7 个词 -> 新词 3，复习 4
     """
-    if target_word_count < 10:
-        review_ratio = 0.6
-    else:
-        review_ratio = 0.7
+    if target_word_count <= 0:
+        return {
+            "target_word_count": 0,
+            "review_quota": 0,
+            "new_quota": 0,
+        }
 
-    review_quota = math.floor(target_word_count * review_ratio)
-    new_quota = target_word_count - review_quota
+    new_quota = math.floor(target_word_count * 2 / 5)
+    if new_quota <= 0:
+        new_quota = 1
+    if new_quota > target_word_count:
+        new_quota = target_word_count
 
+    review_quota = target_word_count - new_quota
     if review_quota < 0:
         review_quota = 0
-    if new_quota < 0:
-        new_quota = 0
 
     return {
         "target_word_count": target_word_count,
@@ -712,7 +722,7 @@ def build_initial_user_word_payload(user_id: int, item: dict) -> dict | None:
         "correct_count": 0,
         "wrong_count": 0,
         "next_review_at": next_review_at,
-        "last_review_at": now_str,
+        "last_review_at": None,
         "queue_date": queue_date,
         "meaning_user": word_payload["meaning_user"],
         "word_root_user": word_payload["word_root_user"],
@@ -840,8 +850,8 @@ def get_today_started_queue_words(user_id: int, target_word_count: int) -> list[
                    forms_user, memory_tip_user
             FROM user_words
             WHERE user_id = ?
-              AND queue_date = ?
-            ORDER BY datetime(created_at) ASC, id ASC
+              AND date(last_review_at) = ?
+            ORDER BY datetime(last_review_at) DESC, id ASC
             LIMIT ?
             """,
             (user_id, today_queue_date, target_word_count),
@@ -892,7 +902,7 @@ def get_started_study_queue(user_id: int) -> dict | None:
     target_word_count = get_target_word_count(user_id)
     today_items = get_today_started_queue_words(user_id, target_word_count)
 
-    if len(today_items) < target_word_count:
+    if not today_items:
         return None
 
     return {
@@ -905,42 +915,50 @@ def get_started_study_queue(user_id: int) -> dict | None:
         "fallback_count": 0,
         "fill_count": 0,
         "items": today_items,
-        "queue_locked": True,
+        "queue_locked": len(today_items) >= target_word_count,
     }
 
 
 def build_study_queue(user_id: int) -> dict:
     """
     当前版本：
-    1. 读取用户 target_word_count
-    2. 计算复习/新词配额
-    3. 按 next_review_at 抽取到期复习词
-    4. 从 user_words 抽新词
-    5. 如果总数仍不足，先继续从 user_words 补
-    6. 如果仍不足，再从 words 临时补足（不写入 user_words）
+    1. 先检查今天是否已有 last_review_at=今天 的单词
+       - 如果有，则优先保留今天这批单词继续学习
+       - 如果数量已达到 target_word_count，则直接锁定今天这批单词
+       - 如果数量不足，则保留今天这批单词，再补足剩余数量
+    2. 补足规则：
+       - 先按配额抽取到期复习词（next_review_at <= now）
+       - 再用 words 总表随机补足剩余数量
+    3. 不再从 user_words 中随机补位，避免把未到期旧词重新拉回队列
     """
     started_queue = get_started_study_queue(user_id)
-    if started_queue is not None:
+    if started_queue is not None and started_queue.get("queue_locked"):
         return started_queue
+
     target_word_count = get_target_word_count(user_id)
     quota = calculate_queue_quota(target_word_count)
 
-    review_items = get_due_review_words(user_id, quota["review_quota"])
-    new_items = get_new_words_from_user_words(user_id, quota["new_quota"])
-
-    items = review_items + new_items
-    selected_ids = {int(item["id"]) for item in items if item.get("id") is not None}
+    base_items = started_queue.get("items", []) if started_queue is not None else []
+    items = list(base_items)
     selected_words = {str(item["word"]).strip().lower() for item in items if item.get("word")}
 
     need_count = target_word_count - len(items)
+    review_need = min(quota["review_quota"], max(0, need_count))
 
-    fallback_items: list[dict] = []
-    if need_count > 0:
-        fallback_items = get_additional_user_words(user_id, need_count, selected_ids)
-        items.extend(fallback_items)
-        selected_ids.update(int(item["id"]) for item in fallback_items if item.get("id") is not None)
-        selected_words.update(str(item["word"]).strip().lower() for item in fallback_items if item.get("word"))
-        need_count = target_word_count - len(items)
+    review_items: list[dict] = []
+    if review_need > 0:
+        due_candidates = get_due_review_words(user_id, max(target_word_count, review_need))
+        for item in due_candidates:
+            word_key = str(item.get("word") or "").strip().lower()
+            if not word_key or word_key in selected_words:
+                continue
+            review_items.append(item)
+            selected_words.add(word_key)
+            if len(review_items) >= review_need:
+                break
+        items.extend(review_items)
+
+    need_count = target_word_count - len(items)
 
     fill_items: list[dict] = []
     if need_count > 0:
@@ -953,8 +971,8 @@ def build_study_queue(user_id: int) -> dict:
         "review_quota": quota["review_quota"],
         "new_quota": quota["new_quota"],
         "review_count": len(review_items),
-        "new_count": len(new_items),
-        "fallback_count": len(fallback_items),
+        "new_count": len(fill_items),
+        "fallback_count": 0,
         "fill_count": len(fill_items),
         "queue_locked": False,
         "items": items,
