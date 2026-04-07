@@ -6,49 +6,100 @@
     state.ttsSessionId = 0;
   }
 
-  // ── 跨浏览器 TTS 工具 ──────────────────────────────────────────────
-  // Chrome/Edge 的 voices 异步加载，且 cancel() 后立刻 speak() 会静音。
-  // 以下两个函数处理这两个问题，并通过 window 暴露给其他模块使用。
+  // ── OpenAI TTS：fetch + Audio 播放，取代浏览器原生 speechSynthesis ──────
+  // 前端按 text.toLowerCase() 缓存 blob URL，同一段文字只请求一次服务器。
+  // 对外暴露的 safeTtsSpeak(utterance) 接口签名不变，
+  // 兼容 home.dialogue.voice.js 传入的 SpeechSynthesisUtterance 对象。
 
-  var _TTS_CANCEL_DELAY = 60; // ms：消除 Chrome/Edge cancel→speak 静音 bug
+  window._ttsAudioCache = window._ttsAudioCache || {};  // key → blob URL
+  window._ttsCurrentAudio = window._ttsCurrentAudio || null;
+  window._ttsPending = window._ttsPending || {};         // key → true（请求进行中）
 
-  // 让 Chrome/Edge 提前触发 voices 加载
-  if ('speechSynthesis' in window && !window._ttsVoiceChangeListenerAdded) {
-    window._ttsVoiceChangeListenerAdded = true;
-    window.speechSynthesis.onvoiceschanged = function () { /* voices 就绪 */ };
-    window.speechSynthesis.getVoices(); // 触发加载
+  /** 停止当前正在播放的音频。 */
+  function ttsStop() {
+    if (window._ttsCurrentAudio) {
+      try {
+        window._ttsCurrentAudio.pause();
+        window._ttsCurrentAudio.src = '';
+      } catch (e) { /* ignore */ }
+      window._ttsCurrentAudio = null;
+    }
   }
 
-  function getTtsVoice(lang) {
-    if (!('speechSynthesis' in window)) return null;
-    var voices = window.speechSynthesis.getVoices();
-    if (!voices || !voices.length) return null;
-    var langLower = (lang || 'en-US').toLowerCase();
-    var prefix = langLower.split('-')[0];
-    // 1. 精确匹配（en-US === en-US）
-    for (var i = 0; i < voices.length; i++) {
-      if (voices[i].lang.toLowerCase() === langLower) return voices[i];
-    }
-    // 2. 前缀匹配（en-US 没有时接受 en-GB 等）
-    for (var i = 0; i < voices.length; i++) {
-      if (voices[i].lang.toLowerCase().indexOf(prefix + '-') === 0) return voices[i];
-    }
-    return null; // 找不到也不阻止朗读，让浏览器用默认 voice
+  /** 判断是否正在播放。 */
+  function ttsIsPlaying() {
+    var a = window._ttsCurrentAudio;
+    return !!(a && !a.paused && !a.ended);
   }
 
-  // 安全朗读：先 cancel，等 60ms，再 speak，同时自动选 voice
+  /**
+   * 统一朗读入口。
+   * @param {SpeechSynthesisUtterance|{text:string,lang:string,onend?:Function,onerror?:Function}} utterance
+   */
   function safeTtsSpeak(utterance) {
-    if (!('speechSynthesis' in window)) return;
-    if (!utterance.voice) {
-      var v = getTtsVoice(utterance.lang || 'en-US');
-      if (v) utterance.voice = v;
+    var text = (utterance.text || '').trim();
+    if (!text) return;
+
+    var onEnd   = typeof utterance.onend   === 'function' ? utterance.onend   : null;
+    var onError = typeof utterance.onerror === 'function' ? utterance.onerror : null;
+
+    ttsStop(); // 停掉上一段
+
+    var key = text.toLowerCase();
+
+    function playUrl(url) {
+      var audio = new Audio(url);
+      window._ttsCurrentAudio = audio;
+      audio.onended = function () {
+        window._ttsCurrentAudio = null;
+        if (onEnd) onEnd();
+      };
+      audio.onerror = function (e) {
+        window._ttsCurrentAudio = null;
+        if (onError) onError(e);
+      };
+      audio.play().catch(function (e) {
+        window._ttsCurrentAudio = null;
+        if (onError) onError(e);
+      });
     }
-    window.speechSynthesis.cancel();
-    window.setTimeout(function () {
-      window.speechSynthesis.speak(utterance);
-    }, _TTS_CANCEL_DELAY);
+
+    // 前端缓存命中：直接播放，无需请求服务器
+    if (window._ttsAudioCache[key]) {
+      playUrl(window._ttsAudioCache[key]);
+      return;
+    }
+
+    // 并发锁：同一 key 正在请求中，直接跳过，避免重复调用 API
+    if (window._ttsPending[key]) {
+      return;
+    }
+    window._ttsPending[key] = true;
+
+    // 请求服务器生成（服务器端也有文件缓存，第二次极快）
+    fetch('/api/tts', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, lang: utterance.lang || 'en-US' })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error('TTS 请求失败: ' + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        window._ttsAudioCache[key] = url;
+        playUrl(url);
+      })
+      .catch(function (e) {
+        if (onError) onError(e);
+      })
+      .finally(function () {
+        delete window._ttsPending[key];
+      });
   }
-  // ──────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────
 
   function clearAutoSpeakTimers() {
     const state = window.homeState;
@@ -90,20 +141,22 @@
     if (!forceSpeak && speechText === state.lastSpokenWord) {
       return false;
     }
-    if (!('speechSynthesis' in window)) {
-      return false;
-    }
-    // examples 模式：startAutoSpeak 已在 80ms 前 cancel，直接检查是否已在播放
-    // 非 examples 模式：safeTtsSpeak 内部会 cancel + 60ms 延迟，解决 Chrome/Edge 静音 bug
+
+    // examples 模式：当前还在播放则跳过（避免重叠）
     if (state.currentCardMode === 'examples') {
-      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      if (ttsIsPlaying()) {
         return false;
       }
     }
-    const utterance = new SpeechSynthesisUtterance(speechText);
-    utterance.lang = 'en-US';
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
+
+    // 构造 utterance 对象（兼容 safeTtsSpeak 接口）
+    var utterance = {
+      text: speechText,
+      lang: 'en-US',
+      onend: null,
+      onerror: null
+    };
+
     if (state.currentCardMode === 'examples') {
       const activeSessionId = typeof sessionId === 'number' ? sessionId : state.ttsSessionId;
       utterance.onend = function () {
@@ -144,14 +197,9 @@
           }
         }, 2000);
       };
-      // examples 模式：cancel 已在 startAutoSpeak 里提前完成（有 80ms 间隔），直接 speak
-      var exVoice = getTtsVoice('en-US');
-      if (exVoice) utterance.voice = exVoice;
-      window.speechSynthesis.speak(utterance);
-    } else {
-      // 非 examples 模式：用 safeTtsSpeak（cancel + 60ms + speak），修复 Chrome/Edge 静音
-      safeTtsSpeak(utterance);
     }
+
+    safeTtsSpeak(utterance);
     state.lastSpokenWord = speechText;
     return true;
   }
@@ -165,9 +213,7 @@
     }
     if (state.currentCardMode === 'examples') {
       const sessionId = state.ttsSessionId;
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      ttsStop();
       state.lastSpokenWord = '';
       state.autoSpeakDelayTimer = window.setTimeout(function () {
         state.autoSpeakDelayTimer = null;
@@ -211,9 +257,7 @@
   function pauseHomeTtsLoop() {
     clearAutoSpeakTimers();
     state.lastSpokenWord = '';
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+    ttsStop();
   }
 
   function resumeHomeTtsLoop() {
@@ -228,8 +272,8 @@
   if (dom.ttsToggleBtn) {
     dom.ttsToggleBtn.addEventListener('click', function () {
       state.ttsEnabled = !state.ttsEnabled;
-      if (!state.ttsEnabled && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      if (!state.ttsEnabled) {
+        ttsStop();
       }
       state.ttsSessionId += 1;
       state.lastSpokenWord = '';
@@ -252,9 +296,7 @@
     if (state.autoSpeakDelayTimer) {
       window.clearTimeout(state.autoSpeakDelayTimer);
     }
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+    ttsStop();
   });
 
   window.clearAutoSpeakTimers = clearAutoSpeakTimers;
@@ -263,6 +305,7 @@
   window.startAutoSpeak = startAutoSpeak;
   window.pauseHomeTtsLoop = pauseHomeTtsLoop;
   window.resumeHomeTtsLoop = resumeHomeTtsLoop;
-  window.getTtsVoice = getTtsVoice;
   window.safeTtsSpeak = safeTtsSpeak;
+  window.ttsStop = ttsStop;
+  window.ttsIsPlaying = ttsIsPlaying;
 })();
