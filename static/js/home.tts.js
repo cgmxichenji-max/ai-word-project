@@ -15,10 +15,12 @@
   window._ttsCurrentAudio = window._ttsCurrentAudio || null;
   window._ttsPending = window._ttsPending || {};         // key → true（请求进行中）
 
-  /** 停止当前正在播放的音频。 */
+  /** 停止当前正在播放的音频。先清回调，防止 onerror 被 src='' 意外触发。 */
   function ttsStop() {
     if (window._ttsCurrentAudio) {
       try {
+        window._ttsCurrentAudio.onended = null;
+        window._ttsCurrentAudio.onerror = null;
         window._ttsCurrentAudio.pause();
         window._ttsCurrentAudio.src = '';
       } catch (e) { /* ignore */ }
@@ -140,13 +142,6 @@
     }
     if (!forceSpeak && speechText === state.lastSpokenWord) {
       return false;
-    }
-
-    // examples 模式：当前还在播放则跳过（避免重叠）
-    if (state.currentCardMode === 'examples') {
-      if (ttsIsPlaying()) {
-        return false;
-      }
     }
 
     // 构造 utterance 对象（兼容 safeTtsSpeak 接口）

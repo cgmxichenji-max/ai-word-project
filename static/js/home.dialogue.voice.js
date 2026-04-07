@@ -146,14 +146,21 @@
 
   function speakDialogueText(text) {
     const content = cleanText(text);
-    if (!content || !state.dialogueState.speechEnabled || !window.speechSynthesis) {
+    // 守卫：safeTtsSpeak 不可用，或对话语音已关闭
+    if (!content || !state.dialogueState.speechEnabled || !window.safeTtsSpeak) {
       if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
         state.dialogueState.shouldResumeListening = false;
-        window.setTimeout(function () {
-          startVoiceInput();
-        }, 150);
+        startVoiceInput();
       }
       return;
+    }
+
+    // 录音恢复函数：仅在 audio.onended / onerror 中调用，确保 TTS 真正结束后才开麦
+    function resumeListeningAfterTts() {
+      if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
+        state.dialogueState.shouldResumeListening = false;
+        startVoiceInput();
+      }
     }
 
     try {
@@ -161,32 +168,13 @@
       utterance.lang = 'en-US';
       utterance.rate = 0.95;
       utterance.pitch = 1;
-      utterance.onend = function () {
-        if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
-          state.dialogueState.shouldResumeListening = false;
-          window.setTimeout(function () {
-            startVoiceInput();
-          }, 150);
-        }
-      };
-      utterance.onerror = function () {
-        if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
-          state.dialogueState.shouldResumeListening = false;
-          window.setTimeout(function () {
-            startVoiceInput();
-          }, 150);
-        }
-      };
-      // safeTtsSpeak：cancel + 60ms 延迟 + speak + 自动选 voice
-      // 修复 Chrome/Edge 在 cancel 后立刻 speak 导致静音的 bug
+      // onend / onerror 均直接由 audio.onended / audio.onerror 驱动，
+      // 不再使用固定 setTimeout 估算播放时长
+      utterance.onend  = resumeListeningAfterTts;
+      utterance.onerror = resumeListeningAfterTts;
       window.safeTtsSpeak(utterance);
     } catch (err) {
-      if (state.dialogueState.autoVoiceMode && state.dialogueState.shouldResumeListening) {
-        state.dialogueState.shouldResumeListening = false;
-        window.setTimeout(function () {
-          startVoiceInput();
-        }, 150);
-      }
+      resumeListeningAfterTts();
     }
   }
 
