@@ -722,7 +722,7 @@ def build_initial_user_word_payload(user_id: int, item: dict) -> dict | None:
         "correct_count": 0,
         "wrong_count": 0,
         "next_review_at": next_review_at,
-        "last_review_at": None,
+        "last_review_at": now_str,
         "queue_date": queue_date,
         "meaning_user": word_payload["meaning_user"],
         "word_root_user": word_payload["word_root_user"],

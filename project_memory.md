@@ -1302,6 +1302,8 @@ prepareExamplesForTest(...)
 
 但在当前阶段，这套规则已经比原先依赖 `queue_date` 的版本更稳定、更接近实际学习需求。
 
+
+
 ---
 
 ### 11. 当前注意事项
@@ -1320,3 +1322,130 @@ prepareExamplesForTest(...)
 - 当前“同一天只升级一次”的防重逻辑依赖：
   - `last_review_at`
   - 所以每次升级成功后必须同步更新时间，当前已接入
+
+  ###12 选词规则
+    【A. last_review_at / next_review_at 使用位置】                                                  
+                                                                                                   
+  1. repositories/user_repo.py — update_user_word_review_schedule（唯一写入点）
+                                                                                                   
+  - 读取 / 更新：写入                                                                              
+  - 触发条件：被 ai_routes.py 的 api_progress_event 调用，条件如下（必须同时满足）：               
+    a. progress_value >= max_progress（前端传入的当前进度已满）                                    
+    b. max_progress > 0                                                                            
+    c. next_review_at 不为空 且 next_review_at <= 今天（单词已到期）                               
+    d. last_review_at 的日期 ≠ 今天（今天还没复习过）                                              
+  - 关键代码（user_repo.py:157-180）：                                                             
+  UPDATE user_words                                                                                
+  SET last_review_at = ?,                                                                          
+      next_review_at = ?                                                                           
+  WHERE user_id = ? AND word = ?                                                                   
+  - last_review_at = now，next_review_at = now + get_srs_interval_days(level) 天
+                                                                                                   
+  ---             
+  2. routes/ai_routes.py — api_progress_event（读取 + 触发更新的入口）                             
+                                                                                                   
+  - 文件 / 函数：ai_routes.py:346，POST /api/progress/event
+  - 读取：current_last_review_at（行 389）、current_next_review_at（行 390），用于判断             
+  review_due（行 396）和 last_review_date != today_str（行 398）                                   
+  - 触发更新：满足条件后调用 update_user_word_review_schedule（行 403）                            
+  - 写入时机：答题进度达满（progress_value >= max_progress）且单词已到期且今天未被复习过           
+                                                                                                   
+  ---                                                                                              
+  3. services/word_service.py — build_initial_user_word_payload（新词首次写入）                    
+                                                                                                   
+  - 文件 / 函数：word_service.py:698
+  - 读取 / 更新：写入（INSERT 时初始化）                                                           
+  - 触发条件：随机选词后调用 persist_word_to_user_words，将新词写入 user_words 时：                
+    - last_review_at = None（新词，从未复习）                                                      
+    - next_review_at = now + 1天（level=1 时默认间隔）                                             
+  - 关键代码（word_service.py:714）：                                                              
+  next_review_at = (now + timedelta(days=interval_days)).strftime(...)                             
+  last_review_at = None                                                                            
+                                                                                                   
+  ---                                                                                              
+  4. services/word_service.py — get_due_review_words（筛选时读取）                                 
+                                                                                                   
+  - 读取 / 更新：读取（SQL 筛选条件）
+  - 作用：next_review_at IS NOT NULL AND next_review_at <= ?                                       
+  用于判断哪些词已到复习期，last_review_at ASC 用于排序                                            
+                                                                                                   
+  ---                                                                                              
+  5. services/word_service.py — get_new_words_from_user_words（筛选时读取）
+                                                                                                   
+  - 读取：last_review_at IS NULL 作为"新词"筛选条件（行 197）
+                                                                                                   
+  ---             
+  6. services/word_service.py — get_today_started_queue_words（筛选时读取）                        
+                                                                                                   
+  - 读取：date(last_review_at) = ?（行 853），用于找出今天已开始学习的词
+                                                                                                   
+  ---             
+  【B. 选词逻辑】                                                                                  
+                                                                                                   
+  总入口：word_service.py — build_study_queue（行 922）
+                                                                                                   
+  用途：构建当日学习队列，返回 items 列表                                                          
+                                                                                                   
+  完整流程：                                                                                       
+                  
+  Step 1 — get_started_study_queue → get_today_started_queue_words                                 
+  - 先查 last_review_at 日期 = 今天的词，视为"今天已开始学习的词"
+  - 若数量 >= target_word_count，直接返回并锁定（queue_locked=True），不再补充                     
+  - 若不足，保留这些词，继续下一步补足                                        
+                                                                                                   
+  Step 2 — get_due_review_words（行 94）                                                           
+  - 筛选条件：level < 6 AND next_review_at IS NOT NULL AND next_review_at <= now                   
+  - 排序：wrong_count DESC, correct_count ASC, last_review_at ASC, id ASC                          
+  - 按 review_quota（= target × 3/5）限额抽取，但实际调用时传的是 max(target_word_count,           
+  review_need)                                                                                     
+  - 依赖 next_review_at：是主要筛选条件                                                            
+                                                                                                   
+  Step 3 — fill_words_from_words_table（行 320）                                                   
+  - 当 user_words 中的复习词不够时，从系统 words 表随机补足                                        
+  - 筛选条件：排除已入队的词（按 word 文本去重）                                                   
+  - 排序：ORDER BY RANDOM()                                                                        
+  - 补来的词 不写入 user_words，id=None，为临时词条（source_type="words_random_temp"）             
+                                                                                                   
+  target_word_count 的参与方式：                                                                   
+  - 从 user_study_settings 读取，默认 20                                                           
+  - 经 calculate_queue_quota 拆分为 new_quota（= floor(total×2/5)，最少 1）和 review_quota（= total
+   - new_quota）                                                                                   
+  - 控制 need_count = target_word_count - len(items) 补充上限                                      
+                                                             
+  queue_locked / queue_date 的参与：                                                               
+  - queue_locked：不是数据库字段，是 build_study_queue 返回的内存标志，由 len(today_items) >=      
+  target_word_count 决定                                                                           
+  - queue_date：user_words 有此字段，build_initial_user_word_payload 写入（行 710），但            
+  build_study_queue 中并未用 queue_date 做筛选，当前选词逻辑完全依赖 last_review_at                
+  的日期来判断"今天已开始的词"                                                                     
+   
+  ---                                                                                              
+  【C. 最终结论】 
+                 
+  这两个字段到底在什么时候更新：
+                                                                                                   
+  ┌──────────────────────────┬─────────────────────────────────┬────────────────────────────────┐  
+  │           字段           │             何时写              │             写入值             │  
+  ├──────────────────────────┼─────────────────────────────────┼────────────────────────────────┤  
+  │ last_review_at（INSERT） │ 新词首次写入 user_words 时      │ NULL                           │
+  ├──────────────────────────┼─────────────────────────────────┼────────────────────────────────┤
+  │ next_review_at（INSERT） │ 新词首次写入 user_words 时      │ now + 1天                      │  
+  ├──────────────────────────┼─────────────────────────────────┼────────────────────────────────┤  
+  │ last_review_at（UPDATE） │ POST /api/progress/event        │ now（当前时间）                │  
+  │                          │ 满足四个条件时                  │                                │  
+  ├──────────────────────────┼─────────────────────────────────┼────────────────────────────────┤
+  │ next_review_at（UPDATE） │ 同上                            │ now + SRS间隔天数（随 level    │  
+  │                          │                                 │ 升级而变长）                   │
+  └──────────────────────────┴─────────────────────────────────┴────────────────────────────────┘  
+                  
+  四个条件缺一不可：进度达满 + 单词已到期（next_review_at <= 今天）+ 今天尚未复习（last_review_at  
+  日期 ≠ 今天）+ max_progress > 0。如果今天已经复习过（last_review_at
+  已是今天），即使进度再次达满，也不会再次更新。                                                   
+                  
+  当前选词逻辑到底依据什么：
+
+  1. 锁定判断：用 last_review_at = 今天 判断今天已开始的词，若已满额则直接锁定，不重新选词         
+  2. 复习词主选：next_review_at <= now（已到期）+ level < 6，优先按 wrong_count DESC 排序
+  3. 填充词兜底：系统 words 表随机补足，不依赖 next_review_at /                                    
+  last_review_at，这些补充词也不会写入 user_words，是纯临时词条                                    
+  4. queue_date 字段当前不参与任何选词筛选，只在 INSERT 时写入，逻辑上已被 last_review_at 取代   

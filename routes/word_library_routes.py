@@ -13,7 +13,7 @@ def word_library_page():
     if not user_id or not username:
         return redirect(url_for("login"))
 
-    return render_template("word_library.html")
+    return render_template("word_library.html", is_system_editor=is_system_editor())
 
 
 @word_library_bp.route("/api/word-library/lookup", methods=["POST"])
@@ -382,6 +382,121 @@ def save_word_library():
 
         conn.commit()
         result = {"ok": True, "message": "已保存到我的词库。", "word": word, "word_id": word_id}
+    except Exception as e:
+        conn.rollback()
+        result = {"ok": False, "message": f"保存失败：{str(e)}"}
+    finally:
+        conn.close()
+
+    if not result.get("ok"):
+        return jsonify(result), 500
+    return jsonify(result)
+
+
+@word_library_bp.route("/api/word-library/save-system", methods=["POST"])
+def save_system_word_library():
+    # 权限校验：仅 GeorgeJi 可用
+    if not is_system_editor():
+        return jsonify({"ok": False, "message": "无权限。"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    word = str(payload.get("word") or "").strip()
+    meaning = str(payload.get("meaning") or "").strip()
+
+    if not word:
+        return jsonify({"ok": False, "message": "单词不能为空。"}), 400
+    if not meaning:
+        return jsonify({"ok": False, "message": "词义不能为空。"}), 400
+
+    word_root = str(payload.get("word_root") or "").strip()
+    affix = str(payload.get("affix") or "").strip()
+    history = str(payload.get("history") or "").strip()
+    forms = str(payload.get("forms") or "").strip()
+    memory_tip = str(payload.get("memory_tip") or "").strip()
+    examples = payload.get("examples") or []
+    stories = payload.get("stories") or []
+
+    import sqlite3
+    from datetime import datetime, timezone
+    from utils.db import get_conn
+
+    conn = get_conn()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    result = {}
+    try:
+        # 1) 查 words 表是否已存在
+        cur.execute(
+            "SELECT id FROM words WHERE lower(word) = ? LIMIT 1",
+            (word.lower(),),
+        )
+        sys_row = cur.fetchone()
+
+        if sys_row:
+            # 更新
+            word_id = sys_row["id"]
+            cur.execute(
+                """
+                UPDATE words
+                SET word = ?, meaning_raw = ?, word_root_raw = ?, affix_raw = ?,
+                    history_raw = ?, forms_raw = ?, memory_tip_raw = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (word, meaning, word_root, affix, history, forms, memory_tip, now, word_id),
+            )
+        else:
+            # 新建；content_raw NOT NULL，写空字符串占位
+            cur.execute(
+                """
+                INSERT INTO words
+                    (word, content_raw, meaning_raw, word_root_raw, affix_raw,
+                     history_raw, forms_raw, memory_tip_raw, created_at, updated_at)
+                VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (word, meaning, word_root, affix, history, forms, memory_tip, now, now),
+            )
+            word_id = cur.lastrowid
+
+        # 2) 先删后加 word_examples（无 sort_order 字段）
+        cur.execute(
+            "DELETE FROM word_examples WHERE word_id = ?",
+            (word_id,),
+        )
+        for ex in examples:
+            en = str(ex.get("example_en") or "").strip()
+            zh = str(ex.get("example_zh") or "").strip()
+            if not en and not zh:
+                continue
+            cur.execute(
+                """
+                INSERT INTO word_examples (word_id, example_en, example_zh, source_type)
+                VALUES (?, ?, ?, 'system')
+                """,
+                (word_id, en, zh),
+            )
+
+        # 3) 先删后加 word_stories（无 sort_order 字段）
+        cur.execute(
+            "DELETE FROM word_stories WHERE word_id = ?",
+            (word_id,),
+        )
+        for st in stories:
+            en = str(st.get("story_en") or "").strip()
+            zh = str(st.get("story_zh") or "").strip()
+            if not en and not zh:
+                continue
+            cur.execute(
+                """
+                INSERT INTO word_stories (word_id, story_en, story_zh, source_type)
+                VALUES (?, ?, ?, 'system')
+                """,
+                (word_id, en, zh),
+            )
+
+        conn.commit()
+        result = {"ok": True, "message": "已保存到系统词库。", "word": word, "word_id": word_id}
     except Exception as e:
         conn.rollback()
         result = {"ok": False, "message": f"保存失败：{str(e)}"}
