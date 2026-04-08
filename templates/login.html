@@ -7,6 +7,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+  <style>
+    /* 系统公告弹窗样式 */
+    #noticeOverlay.is-open { display: flex !important; }
+    #noticeBody img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
+    #noticeBody h1 { font-size: 18px; margin: 0 0 12px; }
+    #noticeBody h2 { font-size: 15px; margin: 16px 0 6px; color: #1e40af; }
+    #noticeBody ul { padding-left: 20px; margin: 6px 0; }
+    #noticeBody li { margin: 3px 0; }
+    #noticeBody blockquote { margin: 10px 0; padding: 8px 14px; background: #f1f5f9; border-left: 3px solid #94a3b8; border-radius: 4px; color: #475569; }
+    #noticeBody strong { color: #0f172a; }
+  </style>
 </head>
 <body>
   <div class="shell">
@@ -29,7 +40,7 @@
       </div>
       <div class="panel-title">
         <h2>欢迎回来</h2>
-        <p>先把登录、单词池数量和密码流程跑通。<br>后面我们再把主页面和学习卡片做得更好玩。</p>
+        <p>AI背单词，让记忆更高效。<br>通过听说读写，让单词真正变熟。</p>
       </div>
     </section>
 
@@ -71,5 +82,41 @@
   </div>
 
   <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+
+  <!-- 系统公告弹窗 -->
+  <div id="noticeOverlay" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;box-shadow:0 16px 48px rgba(15,23,42,0.18);max-width:480px;width:calc(100% - 32px);max-height:80vh;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="padding:18px 20px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:15px;font-weight:800;color:#0f172a;">系统公告</span>
+        <button onclick="closeNotice()" style="border:none;background:none;cursor:pointer;font-size:20px;color:#64748b;line-height:1;padding:0 4px;">&#x2715;</button>
+      </div>
+      <div id="noticeBody" style="padding:20px;overflow-y:auto;flex:1;font-size:14px;line-height:1.8;color:#1e293b;"></div>
+      <div style="padding:14px 20px;border-top:1px solid #e2e8f0;text-align:right;">
+        <button onclick="closeNotice()" style="padding:10px 24px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-size:14px;font-weight:700;cursor:pointer;">我知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function closeNotice() {
+      document.getElementById('noticeOverlay').classList.remove('is-open');
+    }
+
+    document.getElementById('noticeOverlay').addEventListener('click', function (e) {
+      if (e.target === this) closeNotice();
+    });
+
+    (async function () {
+      try {
+        const res = await fetch('/system-notice-content');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.ok && data.html) {
+          document.getElementById('noticeBody').innerHTML = data.html;
+          document.getElementById('noticeOverlay').classList.add('is-open');
+        }
+      } catch (_) {}
+    })();
+  </script>
 </body>
 </html>

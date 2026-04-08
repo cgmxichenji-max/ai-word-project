@@ -506,3 +506,116 @@ def save_system_word_library():
     if not result.get("ok"):
         return jsonify(result), 500
     return jsonify(result)
+
+
+@word_library_bp.route("/api/word-library/delete-user", methods=["POST"])
+def delete_user_word():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"ok": False, "message": "not logged in"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    word = str(payload.get("word") or "").strip().lower()
+    if not word:
+        return jsonify({"ok": False, "message": "单词不能为空。"}), 400
+
+    import sqlite3
+    from utils.db import get_conn
+
+    conn = get_conn()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    user_id_int = int(user_id)
+
+    result = {}
+    try:
+        # 查 user_words 获取 word_id
+        cur.execute(
+            "SELECT id, word_id FROM user_words WHERE user_id = ? AND lower(word) = ? LIMIT 1",
+            (user_id_int, word),
+        )
+        user_row = cur.fetchone()
+        if not user_row:
+            return jsonify({"ok": False, "message": "用户词库中不存在该单词。"}), 404
+
+        uw_id = user_row["id"]
+        word_id = user_row["word_id"]  # 直接取真实值，不做 fallback
+
+        # 按规定顺序删除：先子表，再主表
+        # user_word_examples / user_word_stories 以 (user_id, word_id) 关联，
+        # 只有 word_id 是有效值时才删子表；为 NULL/0 说明子表当初也未写入，跳过。
+        if word_id:
+            cur.execute(
+                "DELETE FROM user_word_examples WHERE user_id = ? AND word_id = ?",
+                (user_id_int, word_id),
+            )
+            cur.execute(
+                "DELETE FROM user_word_stories WHERE user_id = ? AND word_id = ?",
+                (user_id_int, word_id),
+            )
+        cur.execute(
+            "DELETE FROM user_words WHERE id = ? AND user_id = ?",
+            (uw_id, user_id_int),
+        )
+
+        conn.commit()
+        result = {"ok": True, "message": f"已从我的词库删除「{word}」。"}
+    except Exception as e:
+        conn.rollback()
+        result = {"ok": False, "message": f"删除失败：{str(e)}"}
+    finally:
+        conn.close()
+
+    if not result.get("ok"):
+        return jsonify(result), 500
+    return jsonify(result)
+
+
+@word_library_bp.route("/api/word-library/delete-system", methods=["POST"])
+def delete_system_word():
+    if not session.get("user_id"):
+        return jsonify({"ok": False, "message": "not logged in"}), 401
+    if not is_system_editor():
+        return jsonify({"ok": False, "message": "无权限，仅 GeorgeJi 可删除系统词库。"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    word = str(payload.get("word") or "").strip().lower()
+    if not word:
+        return jsonify({"ok": False, "message": "单词不能为空。"}), 400
+
+    import sqlite3
+    from utils.db import get_conn
+
+    conn = get_conn()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    result = {}
+    try:
+        # 查 words 获取 word_id
+        cur.execute(
+            "SELECT id FROM words WHERE lower(word) = ? LIMIT 1",
+            (word,),
+        )
+        sys_row = cur.fetchone()
+        if not sys_row:
+            return jsonify({"ok": False, "message": "系统词库中不存在该单词。"}), 404
+
+        word_id = sys_row["id"]
+
+        # 按规定顺序删除：先子表，再主表；不触碰任何 user_* 表
+        cur.execute("DELETE FROM word_examples WHERE word_id = ?", (word_id,))
+        cur.execute("DELETE FROM word_stories WHERE word_id = ?", (word_id,))
+        cur.execute("DELETE FROM words WHERE id = ?", (word_id,))
+
+        conn.commit()
+        result = {"ok": True, "message": f"已从系统词库删除「{word}」（用户副本不受影响）。"}
+    except Exception as e:
+        conn.rollback()
+        result = {"ok": False, "message": f"删除失败：{str(e)}"}
+    finally:
+        conn.close()
+
+    if not result.get("ok"):
+        return jsonify(result), 500
+    return jsonify(result)

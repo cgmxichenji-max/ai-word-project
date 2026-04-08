@@ -19,6 +19,7 @@ from repositories.user_repo import (
 from repositories.word_repo import get_word_by_text, get_word_by_id
 from routes.ai_routes import ai_bp
 from routes.tts_routes import tts_bp
+from routes.notice_routes import notice_bp
 from routes.word_library_routes import word_library_bp
 from services.word_service import build_study_queue, persist_queue_words_to_user_words
 from utils.db import get_conn
@@ -30,6 +31,7 @@ app.secret_key = "change-this-to-a-random-secret-key"
 app.register_blueprint(ai_bp)
 app.register_blueprint(tts_bp)
 app.register_blueprint(word_library_bp)
+app.register_blueprint(notice_bp)
 
 
 def normalize_manual_words(words: list[str]) -> list[str]:

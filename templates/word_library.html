@@ -213,6 +213,17 @@
       cursor: pointer;
     }
 
+    .danger-btn {
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1px solid #fca5a5;
+      background: #fff1f1;
+      color: #dc2626;
+    }
+
     .empty-table-tip {
       padding: 12px;
       border: 1px dashed #cbd5e1;
@@ -332,6 +343,13 @@
         <button id="save-system-btn" class="ghost-btn" type="button">保存到系统词库</button>
         {% endif %}
         <button class="ghost-btn" type="button" onclick="window.location.href='/home'">返回</button>
+      </div>
+
+      <div class="actions" style="margin-top:12px;">
+        <button id="delete-user-btn" class="danger-btn" type="button">删除我的词库</button>
+        {% if is_system_editor %}
+        <button id="delete-system-btn" class="danger-btn" type="button">删除系统词库</button>
+        {% endif %}
       </div>
 
       <div id="status" class="hint" style="margin-top:10px;"></div>
@@ -663,11 +681,84 @@
       }
     }
 
+    async function deleteUserWord() {
+      const word = document.getElementById('custom-word').value.trim();
+      const status = document.getElementById('status');
+
+      if (!word) { status.textContent = '请先查询一个单词。'; return; }
+
+      const confirmed = confirm('确认删除当前用户词条及其例句/故事吗？');
+      if (!confirmed) return;
+
+      const btn = document.getElementById('delete-user-btn');
+      btn.disabled = true;
+      status.textContent = '删除中...';
+
+      try {
+        const res = await fetch('/api/word-library/delete-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: word })
+        });
+        const data = await res.json();
+        if (!data || data.ok !== true) {
+          status.textContent = (data && data.message) ? data.message : '删除失败';
+          btn.disabled = false;
+          return;
+        }
+        status.textContent = data.message || '已删除。';
+        // 重新查询，若已不存在则显示"未找到"状态
+        await lookupWord();
+      } catch (e) {
+        status.textContent = '删除失败：网络错误';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    {% if is_system_editor %}
+    async function deleteSystemWord() {
+      const word = document.getElementById('custom-word').value.trim();
+      const status = document.getElementById('status');
+
+      if (!word) { status.textContent = '请先查询一个单词。'; return; }
+
+      const confirmed = confirm('确认删除系统词条及系统例句/故事吗？此操作不会删除用户词库副本。');
+      if (!confirmed) return;
+
+      const btn = document.getElementById('delete-system-btn');
+      btn.disabled = true;
+      status.textContent = '删除中...';
+
+      try {
+        const res = await fetch('/api/word-library/delete-system', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word: word })
+        });
+        const data = await res.json();
+        if (!data || data.ok !== true) {
+          status.textContent = (data && data.message) ? data.message : '删除失败';
+          btn.disabled = false;
+          return;
+        }
+        status.textContent = data.message || '已删除。';
+        await lookupWord();
+      } catch (e) {
+        status.textContent = '删除失败：网络错误';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    {% endif %}
+
     document.getElementById('lookup-btn').addEventListener('click', lookupWord);
     document.getElementById('reset-btn').addEventListener('click', resetForm);
     document.getElementById('save-btn').addEventListener('click', saveWord);
+    document.getElementById('delete-user-btn').addEventListener('click', deleteUserWord);
     {% if is_system_editor %}
     document.getElementById('save-system-btn').addEventListener('click', saveSystemWord);
+    document.getElementById('delete-system-btn').addEventListener('click', deleteSystemWord);
     {% endif %}
     document.getElementById('custom-word').addEventListener('keydown', function (event) {
       if (event.key === 'Enter') {
