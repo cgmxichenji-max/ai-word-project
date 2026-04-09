@@ -24,7 +24,9 @@ ai-word-project-github/
 │
 ├── templates/
 │   ├── login.html                # 登录流程页面（3 步骤）
-│   └── home.html                 # 主学习界面
+│   ├── home.html                 # 主学习界面
+│   ├── internal_admin.html       # 内部管理页面（用户创建 + 时长管理）
+│   └── account_expired.html      # 账号未开通 / 已到期拦截页
 │
 ├── static/
 │   ├── css/
@@ -41,13 +43,18 @@ ai-word-project-github/
 │       └── login.js              # 登录页吉祥物眼睛跟踪动画
 │
 ├── routes/
-│   └── ai_routes.py              # AI 相关 API 端点（Blueprint）
+│   ├── ai_routes.py              # AI 相关 API 端点（Blueprint）
+│   ├── internal_admin_routes.py  # 内部管理 API（用户创建 + 时长管理，仅 GeorgeJi）
+│   ├── tts_routes.py             # TTS 语音合成 API
+│   ├── notice_routes.py          # 系统公告内容 API
+│   └── word_library_routes.py    # 词库查询 API
 │
 ├── services/
 │   ├── word_service.py           # 学习队列核心逻辑（SRS / 队列生成）
 │   ├── ai_service.py             # OpenAI API 封装
 │   ├── dialogue_service.py       # AI 对话 Prompt 构建
-│   └── example_test_service.py   # 例句测试服务（占位，尚未实现）
+│   ├── notice_service.py         # 公告 Markdown → HTML
+│   └── user_expiry_service.py    # 用户有效期状态判断与续费计算
 │
 ├── repositories/
 │   ├── word_repo.py              # 系统词库查询
@@ -82,13 +89,13 @@ ai-word-project-github/
 | `/login` | GET/POST | 用户名输入（第 1 步） |
 | `/pool-size` | GET/POST | 设置每日学习目标词数（第 2 步） |
 | `/password` | GET/POST | 设置/验证密码（第 3 步） |
-| `/home` | GET | 主学习页面，预生成当天队列 |
+| `/home` | GET | 主学习页面，预生成当天队列；未开通/已到期账号在此拦截 |
 | `/api/start-study` | POST | 随机启动学习（持久化队列） |
 | `/api/start-study-manual` | POST | 手动指定单词启动学习 |
 | `/api/find-word` | GET | 验证单词是否存在于词库 |
 | `/api/check-dictation` | POST | 核对听写拼写答案 |
 | `/logout` | GET | 清除 Session，退出登录 |
-| `/internal-user-create` | GET | 管理员用户创建页面（仅 GeorgeJi） |
+| `/internal-user-create` | GET | 内部管理页面（仅 GeorgeJi，已迁移至 Blueprint） |
 
 ---
 
@@ -152,7 +159,18 @@ AI 相关功能单独组织为 Flask Blueprint，所有接口返回 `{"ok": bool
 | `/api/example-test/fill-examples` | POST | AI 补全缺失的例句（不足 3 条时） |
 | `/api/progress/event` | POST | 记录学习进度（正确/错误次数 + SRS 更新） |
 
-### 4.2 Service 层
+### 4.2 Blueprint：`routes/internal_admin_routes.py`
+
+内部管理功能，所有接口仅限 GeorgeJi 登录后访问：
+
+| 端点 | 方法 | 功能 |
+|------|------|------|
+| `/internal-user-create` | GET | 内部管理页面（从 `app.py` 迁移至此 Blueprint） |
+| `/api/internal/create-user` | POST | 创建新用户（无密码，首次登录自设） |
+| `/api/internal/user-expiry-info` | POST | 查询用户到期状态（by user_id 或 username） |
+| `/api/internal/extend-user-expiry` | POST | 为用户增加时长（months: 1/2/3） |
+
+### 4.3 Service 层
 
 #### `services/word_service.py`（核心：队列生成）
 
@@ -167,6 +185,15 @@ AI 相关功能单独组织为 Flask Blueprint，所有接口返回 `{"ok": bool
 - `fill_words_from_words_table(user_id, need_count, exclude_words)` — 从系统词库补充不足的词
 - `persist_queue_words_to_user_words(user_id, items)` — 批量写入用户词表（去重）
 
+#### `services/user_expiry_service.py`
+
+用户有效期管理的计算层：
+- `get_expiry_status(expires_at)` — 返回 `{"status": "未开通"|"已到期"|"有效中", "expires_at": ...}`
+- `calculate_new_expiry(expires_at, months)` — 计算续费后新到期时间：
+  - `expires_at` 为空或已过期 → 从 `now` 起算
+  - `expires_at` 未过期 → 从 `expires_at` 续加（不吞剩余时长）
+  - 1个月=31天，2个月=62天，3个月=93天
+
 #### `services/ai_service.py`
 
 OpenAI API 的轻量封装，懒加载客户端，提供 `chat_text(prompt, system_prompt)` 接口。
@@ -178,14 +205,18 @@ OpenAI API 的轻量封装，懒加载客户端，提供 `chat_text(prompt, syst
 2. **sentence（造句）**：用户用该词造句
 3. **check（确认）**：AI 验证用户真正理解了单词
 
-### 4.3 Repository 层
+### 4.4 Repository 层
 
 | 文件 | 职责 |
 |------|------|
 | `word_repo.py` | 按文本/ID 查询系统词库，获取词的完整信息（含例句、词根、故事等） |
-| `user_repo.py` | 用户查询、密码管理、用户词记录读写、SRS 时间更新 |
+| `user_repo.py` | 用户查询、密码管理、用户词记录读写、SRS 时间更新、用户有效期读写 |
 
-#### SRS 间隔配置（`utils/db.py`）
+`user_repo.py` 有效期相关新增函数：
+- `get_user_expiry(user_id)` — 获取 `expires_at` 字段值
+- `set_user_expires_at(user_id, expires_at)` — 更新 `expires_at` 字段
+
+#### SRS 间隔配置（`user_repo.py`）
 
 | Level | 复习间隔 |
 |-------|---------|
@@ -284,7 +315,7 @@ app.py: home()
 
 | 表名 | 行数（约） | 说明 |
 |------|-----------|------|
-| `users` | 少量 | 用户账号与权限 |
+| `users` | 少量 | 用户账号与权限，含 `expires_at` 有效期字段（2026-04-09 新增） |
 | `user_study_settings` | 少量 | 用户每日目标词数 |
 | `words` | ~8,027 | 系统词库（含释义、例句、词根等） |
 | `word_examples` | ~25,646 | 系统例句 |

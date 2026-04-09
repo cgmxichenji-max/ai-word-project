@@ -154,6 +154,29 @@ def get_srs_interval_days(level: int) -> int:
     return 30
 
 
+def get_user_expiry(user_id: int) -> Optional[str]:
+    """获取用户的 expires_at 字段值，不存在时返回 None。"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "SELECT expires_at FROM users WHERE id = ? LIMIT 1",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        return row["expires_at"]
+
+
+def set_user_expires_at(user_id: int, expires_at: str) -> None:
+    """更新用户的 expires_at 字段。"""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE users SET expires_at = ?, updated_at = datetime('now') WHERE id = ?",
+            (expires_at, user_id),
+        )
+        conn.commit()
+
+
 def update_user_word_review_schedule(user_id: int, word: str, level: int) -> None:
     word = str(word or "").strip()
     if not user_id or not word:

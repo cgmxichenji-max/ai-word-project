@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>内部管理</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      padding: 32px 16px;
+      color: #1f2937;
+    }
+    .page-title {
+      max-width: 560px;
+      margin: 0 auto 24px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .card {
+      max-width: 560px;
+      margin: 0 auto 24px;
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+    .card p.desc {
+      margin: 0 0 16px;
+      color: #4b5563;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 15px;
+      margin-bottom: 12px;
+      outline: none;
+    }
+    input:focus { border-color: #6366f1; }
+    .btn {
+      display: inline-block;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-primary { background: #111827; color: #fff; width: 100%; }
+    .btn-query   { background: #4f46e5; color: #fff; }
+    .btn-month   { background: #059669; color: #fff; margin-right: 6px; margin-bottom: 6px; }
+    .result-box {
+      margin-top: 12px;
+      min-height: 20px;
+      font-size: 14px;
+      color: #374151;
+    }
+    .result-box.error { color: #dc2626; }
+    .result-box.success { color: #059669; }
+    .expiry-info {
+      margin-top: 14px;
+      padding: 14px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+    .expiry-info .label { font-weight: 600; color: #6b7280; }
+    .status-tag {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .status-active   { background: #d1fae5; color: #065f46; }
+    .status-expired  { background: #fee2e2; color: #991b1b; }
+    .status-inactive { background: #f3f4f6; color: #6b7280; }
+    .extend-btns { margin-top: 14px; }
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="page-title">内部管理</div>
+
+  <!-- 区块 A：创建用户 -->
+  <div class="card">
+    <h2>区块 A：创建用户</h2>
+    <p class="desc">只有 GeorgeJi 可以访问此页面。创建后用户首次登录时自行设置密码。</p>
+    <label for="newUsername">新用户名</label>
+    <input id="newUsername" type="text" placeholder="请输入新用户名" autocomplete="off">
+    <button id="createBtn" class="btn btn-primary" type="button">提交</button>
+    <div id="createResult" class="result-box"></div>
+  </div>
+
+  <!-- 区块 B：用户时长管理 -->
+  <div class="card">
+    <h2>区块 B：用户时长管理</h2>
+    <p class="desc">通过用户 ID 或用户名查询到期状态，并可延长有效期。</p>
+
+    <hr class="divider">
+    <label for="queryInput">用户 ID 或用户名</label>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <input id="queryInput" type="text" placeholder="输入 ID（数字）或用户名" style="margin-bottom:0;flex:1;">
+      <button id="queryBtn" class="btn btn-query" type="button">查询</button>
+    </div>
+    <div id="queryResult" class="result-box"></div>
+
+    <!-- 查询结果展示 -->
+    <div id="expiryInfo" class="expiry-info" style="display:none;">
+      <div><span class="label">用户 ID：</span><span id="infoId"></span></div>
+      <div><span class="label">用户名：</span><span id="infoUsername"></span></div>
+      <div><span class="label">到期时间：</span><span id="infoExpiresAt"></span></div>
+      <div><span class="label">当前状态：</span><span id="infoStatus"></span></div>
+    </div>
+
+    <!-- 续费按钮 -->
+    <div id="extendArea" class="extend-btns" style="display:none;">
+      <hr class="divider">
+      <div style="font-size:14px;font-weight:600;margin-bottom:8px;">续费（为以上用户增加时长）</div>
+      <button class="btn btn-month" type="button" data-months="1">+ 1 个月（31天）</button>
+      <button class="btn btn-month" type="button" data-months="2">+ 2 个月（62天）</button>
+      <button class="btn btn-month" type="button" data-months="3">+ 3 个月（93天）</button>
+      <div id="extendResult" class="result-box" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <script>
+    // ===== 区块 A：创建用户 =====
+    const createInput  = document.getElementById("newUsername");
+    const createBtn    = document.getElementById("createBtn");
+    const createResult = document.getElementById("createResult");
+
+    async function submitCreateUser() {
+      const username = (createInput.value || "").trim();
+      createResult.textContent = "";
+      createResult.className = "result-box";
+      if (!username) { createResult.textContent = "请输入用户名。"; return; }
+
+      createBtn.disabled = true;
+      createBtn.textContent = "提交中...";
+      try {
+        const res  = await fetch("/api/internal/create-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "创建失败。");
+        createResult.textContent = data.message || "创建成功。";
+        createResult.className = "result-box success";
+        createInput.value = "";
+        createInput.focus();
+      } catch (err) {
+        createResult.textContent = err.message || "创建失败。";
+        createResult.className = "result-box error";
+      } finally {
+        createBtn.disabled = false;
+        createBtn.textContent = "提交";
+      }
+    }
+    createBtn.addEventListener("click", submitCreateUser);
+    createInput.addEventListener("keydown", e => { if (e.key === "Enter") submitCreateUser(); });
+
+    // ===== 区块 B：查询到期信息 =====
+    const queryInput  = document.getElementById("queryInput");
+    const queryBtn    = document.getElementById("queryBtn");
+    const queryResult = document.getElementById("queryResult");
+    const expiryInfo  = document.getElementById("expiryInfo");
+    const extendArea  = document.getElementById("extendArea");
+    const extendResult = document.getElementById("extendResult");
+
+    let currentUserId = null;
+
+    function renderExpiryInfo(data) {
+      document.getElementById("infoId").textContent       = data.id;
+      document.getElementById("infoUsername").textContent = data.username;
+      document.getElementById("infoExpiresAt").textContent = data.expires_at || "（未设置）";
+
+      const statusEl = document.getElementById("infoStatus");
+      statusEl.textContent = data.status;
+      statusEl.className = "status-tag";
+      if (data.status === "有效中")  statusEl.classList.add("status-active");
+      else if (data.status === "已到期") statusEl.classList.add("status-expired");
+      else statusEl.classList.add("status-inactive");
+
+      expiryInfo.style.display = "";
+      extendArea.style.display = "";
+      currentUserId = data.id;
+    }
+
+    async function queryExpiry() {
+      const raw = (queryInput.value || "").trim();
+      queryResult.textContent = "";
+      queryResult.className = "result-box";
+      expiryInfo.style.display = "none";
+      extendArea.style.display = "none";
+      extendResult.textContent = "";
+      currentUserId = null;
+
+      if (!raw) { queryResult.textContent = "请输入用户 ID 或用户名。"; return; }
+
+      queryBtn.disabled = true;
+      queryBtn.textContent = "查询中...";
+      try {
+        const isNumeric = /^\d+$/.test(raw);
+        const body = isNumeric ? { user_id: parseInt(raw, 10) } : { username: raw };
+        const res  = await fetch("/api/internal/user-expiry-info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "查询失败。");
+        queryResult.textContent = data.message;
+        queryResult.className = "result-box success";
+        renderExpiryInfo(data);
+      } catch (err) {
+        queryResult.textContent = err.message || "查询失败。";
+        queryResult.className = "result-box error";
+      } finally {
+        queryBtn.disabled = false;
+        queryBtn.textContent = "查询";
+      }
+    }
+    queryBtn.addEventListener("click", queryExpiry);
+    queryInput.addEventListener("keydown", e => { if (e.key === "Enter") queryExpiry(); });
+
+    // ===== 续费按钮 =====
+    extendArea.addEventListener("click", async function(e) {
+      const btn = e.target.closest("[data-months]");
+      if (!btn || !currentUserId) return;
+      const months = parseInt(btn.dataset.months, 10);
+      extendResult.textContent = "";
+      extendResult.className = "result-box";
+
+      const allBtns = extendArea.querySelectorAll("[data-months]");
+      allBtns.forEach(b => b.disabled = true);
+      btn.textContent = "处理中...";
+
+      try {
+        const res  = await fetch("/api/internal/extend-user-expiry", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: currentUserId, months }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "续费失败。");
+        extendResult.textContent = data.message;
+        extendResult.className = "result-box success";
+        // 更新展示的到期信息
+        renderExpiryInfo(data);
+      } catch (err) {
+        extendResult.textContent = err.message || "续费失败。";
+        extendResult.className = "result-box error";
+      } finally {
+        allBtns.forEach((b, i) => {
+          b.disabled = false;
+          b.textContent = ["+ 1 个月（31天）", "+ 2 个月（62天）", "+ 3 个月（93天）"][i];
+        });
+      }
+    });
+  </script>
+</body>
+</html>

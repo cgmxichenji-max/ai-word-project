@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import sqlite3
-from typing import Any, Optional
+from typing import Optional
 
-from flask import Flask, jsonify, redirect, render_template, render_template_string, request, session, url_for
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from repositories.user_repo import (
@@ -18,17 +17,20 @@ from repositories.user_repo import (
 )
 from repositories.word_repo import get_word_by_text, get_word_by_id
 from routes.ai_routes import ai_bp
+from routes.internal_admin_routes import internal_admin_bp
 from routes.tts_routes import tts_bp
 from routes.notice_routes import notice_bp
 from routes.word_library_routes import word_library_bp
+from services.notice_service import get_notice_html
+from services.user_expiry_service import get_expiry_status
 from services.word_service import build_study_queue, persist_queue_words_to_user_words
-from utils.db import get_conn
 
 
 app = Flask(__name__)
 app.secret_key = "change-this-to-a-random-secret-key"
 
 app.register_blueprint(ai_bp)
+app.register_blueprint(internal_admin_bp)
 app.register_blueprint(tts_bp)
 app.register_blueprint(word_library_bp)
 app.register_blueprint(notice_bp)
@@ -389,6 +391,19 @@ def home():
     if not user_id or not username:
         return redirect(url_for("login"))
 
+    user = get_user_by_id(int(user_id))
+    if user:
+        expiry = get_expiry_status(user["expires_at"])
+        if expiry["status"] in ("未开通", "已到期"):
+            return render_template(
+                "account_expired.html",
+                user_id=user_id,
+                username=username,
+                status=expiry["status"],
+                expires_at=expiry["expires_at"],
+                notice_html=get_notice_html(),
+            )
+
     setting = get_user_setting(int(user_id))
     target_word_count = setting["target_word_count"] if setting else "未设置"
 
@@ -405,211 +420,6 @@ def home():
         queue_locked=queue_locked,
     )
 
-
-# --- Internal user creation (GeorgeJi only)
-
-def ensure_internal_georgeji_access():
-    user_id = session.get("user_id")
-    username = str(session.get("username") or "").strip()
-
-    if not user_id or not username:
-        return False, redirect(url_for("login"))
-
-    if username != "GeorgeJi":
-        return False, ({"ok": False, "message": "只有 GeorgeJi 可以访问这个页面。"}, 403)
-
-    return True, None
-
-
-@app.route("/internal-user-create")
-def internal_user_create_page():
-    allowed, denied_response = ensure_internal_georgeji_access()
-    if not allowed:
-        return denied_response
-
-    return render_template_string(
-        """
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>内部用户创建</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f7fb;
-      margin: 0;
-      padding: 32px 16px;
-      color: #1f2937;
-    }
-    .card {
-      max-width: 520px;
-      margin: 0 auto;
-      background: #ffffff;
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
-    }
-    h2 {
-      margin: 0 0 12px;
-      font-size: 24px;
-    }
-    p {
-      margin: 0 0 16px;
-      color: #4b5563;
-      line-height: 1.6;
-    }
-    label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: 600;
-    }
-    input {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 12px 14px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      font-size: 16px;
-      margin-bottom: 12px;
-    }
-    button {
-      width: 100%;
-      padding: 12px 14px;
-      border: 0;
-      border-radius: 8px;
-      background: #111827;
-      color: #ffffff;
-      font-size: 16px;
-      cursor: pointer;
-    }
-    button:disabled {
-      opacity: 0.7;
-      cursor: not-allowed;
-    }
-    .result {
-      margin-top: 14px;
-      min-height: 24px;
-      font-size: 14px;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>内部用户创建</h2>
-    <p>只有 GeorgeJi 登录后输入这个链接，才能打开这个页面。</p>
-    <label for="newUsername">新用户名</label>
-    <input id="newUsername" type="text" placeholder="请输入新用户名" autocomplete="off">
-    <button id="submitBtn" type="button">提交</button>
-    <div id="resultBox" class="result"></div>
-  </div>
-
-  <script>
-    const input = document.getElementById("newUsername");
-    const button = document.getElementById("submitBtn");
-    const resultBox = document.getElementById("resultBox");
-
-    async function submitCreateUser() {
-      const username = String(input.value || "").trim();
-      resultBox.textContent = "";
-
-      if (!username) {
-        resultBox.textContent = "请输入用户名。";
-        input.focus();
-        return;
-      }
-
-      button.disabled = true;
-      button.textContent = "提交中...";
-
-      try {
-        const response = await fetch("/api/internal/create-user", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username })
-        });
-
-        const data = await response.json();
-        if (!response.ok || !data.ok) {
-          throw new Error(data.message || "创建失败。");
-        }
-
-        resultBox.textContent = data.message || "创建成功。";
-        input.value = "";
-        input.focus();
-      } catch (error) {
-        resultBox.textContent = error.message || "创建失败。";
-      } finally {
-        button.disabled = false;
-        button.textContent = "提交";
-      }
-    }
-
-    button.addEventListener("click", submitCreateUser);
-    input.addEventListener("keydown", function (event) {
-      if (event.key === "Enter") {
-        submitCreateUser();
-      }
-    });
-  </script>
-</body>
-</html>
-        """
-    )
-
-
-@app.route("/api/internal/create-user", methods=["POST"])
-def api_internal_create_user():
-    allowed, denied_response = ensure_internal_georgeji_access()
-    if not allowed:
-        return denied_response
-
-    payload = request.get_json(silent=True) or {}
-    username = str(payload.get("username") or "").strip()
-
-    if not username:
-        return {"ok": False, "message": "用户名不能为空。"}, 400
-
-    if len(username) > 50:
-        return {"ok": False, "message": "用户名太长了。"}, 400
-
-    existing_user = get_user_by_username(username)
-    if existing_user:
-        return {"ok": False, "message": "这个用户名已经存在。"}, 400
-
-    conn = get_conn()
-    try:
-        conn.execute(
-            """
-            INSERT INTO users (
-                username,
-                password_hash,
-                display_name,
-                role,
-                is_active,
-                created_at,
-                updated_at,
-                note
-            ) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
-            """,
-            (
-                username,
-                "",
-                username,
-                "user",
-                1,
-                "由 GeorgeJi 在内部创建页创建",
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return {
-        "ok": True,
-        "message": f"用户 {username} 创建成功，首次登录时可自行设置密码。",
-    }
 
 # --- Insert test-study-queue route above logout
 @app.route("/test-study-queue")

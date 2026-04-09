@@ -871,10 +871,10 @@ AI 需要遵循：
 
 新增流程：
 
-- 在抽句之前先执行：
+- 在抽句之前先执行 `prepareExamplesForTest(...)` 补足例句，再进入抽句与逐句测试流程
 
-```js
-prepareExamplesForTest(...)
+---
+
 ## 进度条与 level 规则（新增补充）
 
 ### 1. 当前最终规则（最新确认）
@@ -1319,11 +1319,11 @@ prepareExamplesForTest(...)
   - `/api/progress/event`
   - 前端是否仍有地方错误上报了 `max_progress = 3`
 
-- 当前“同一天只升级一次”的防重逻辑依赖：
+- 当前”同一天只升级一次”的防重逻辑依赖：
   - `last_review_at`
   - 所以每次升级成功后必须同步更新时间，当前已接入
 
-  ###12 选词规则
+### 12. 选词规则
     【A. last_review_at / next_review_at 使用位置】                                                  
                                                                                                    
   1. repositories/user_repo.py — update_user_word_review_schedule（唯一写入点）
@@ -1449,3 +1449,135 @@ prepareExamplesForTest(...)
   3. 填充词兜底：系统 words 表随机补足，不依赖 next_review_at /                                    
   last_review_at，这些补充词也不会写入 user_words，是纯临时词条                                    
   4. queue_date 字段当前不参与任何选词筛选，只在 INSERT 时写入，逻辑上已被 last_review_at 取代   
+
+# 13. 历史开发记录
+
+## 13.1 系统公告弹窗（新增）
+
+- 登录页自动弹出公告
+- 内容来自文件：
+
+notice/system_notice.md
+
+- 有文件 → 弹窗  
+- 无文件 → 不弹
+
+### 技术实现
+
+- 新增：
+  - services/notice_service.py（读取 + Markdown转HTML）
+  - routes/notice_routes.py（/system-notice-content）
+- 前端：login.html 弹窗 + fetch加载
+
+### 支持内容
+
+- 推广文案（29.9 / 19.9）
+- 用户ID备注提示
+- 收款二维码：
+
+/static/notices/payment.jpg
+
+---
+
+## 13.2 删除功能（新增 + 修复）
+
+新增接口：
+
+- 删除用户词库：
+  /api/word-library/delete-user
+
+- 删除系统词库：
+  /api/word-library/delete-system（仅管理员）
+
+### 关键修复（重要）
+
+修复错误逻辑：
+
+❌ 用 uw_id 冒充 word_id  
+✅ 只使用真实 word_id
+
+### 当前删除规则
+
+- 有 word_id → 删除子表 + 主表  
+- 无 word_id → 只删主表（避免误删）
+
+---
+
+## 13.3 其他
+
+- 新建 requirements.txt（固定依赖）
+- Flask 端口改为 5000
+
+---
+
+# 14. 用户有效期管理（2026-04-09 新增）
+
+## 14.1 数据库变更
+
+`users` 表新增字段：
+
+```sql
+ALTER TABLE users ADD COLUMN expires_at TEXT;
+```
+
+- `NULL`：账号未开通
+- 有值：到该时间点到期（格式 `YYYY-MM-DD HH:MM:SS`）
+
+---
+
+## 14.2 新增文件
+
+| 文件 | 用途 |
+|---|---|
+| `services/user_expiry_service.py` | 到期状态判断、续费时间计算 |
+| `routes/internal_admin_routes.py` | 内部管理所有路由（Blueprint） |
+| `templates/internal_admin.html` | 内部管理页面（用户创建 + 时长管理） |
+| `templates/account_expired.html` | 账号未开通/已到期拦截页 |
+
+---
+
+## 14.3 修改文件
+
+- `repositories/user_repo.py`：新增 `get_user_expiry()`、`set_user_expires_at()`
+- `app.py`：
+  - 移除旧 `render_template_string` 内部管理页及相关路由，迁入 Blueprint
+  - 注册 `internal_admin_bp`
+  - `/home` 路由新增有效期拦截（未开通/已到期 → 渲染 `account_expired.html`）
+
+---
+
+## 14.4 内部管理 API
+
+| 端点 | 功能 | 限制 |
+|---|---|---|
+| `GET /internal-user-create` | 内部管理页面 | 仅 GeorgeJi |
+| `POST /api/internal/create-user` | 创建用户 | 仅 GeorgeJi |
+| `POST /api/internal/user-expiry-info` | 查询用户到期状态 | 仅 GeorgeJi |
+| `POST /api/internal/extend-user-expiry` | 续费（months: 1/2/3） | 仅 GeorgeJi |
+
+---
+
+## 14.5 续费计算规则
+
+- 1 个月 = 31 天，2 个月 = 62 天，3 个月 = 93 天
+- `expires_at` 为空或已过期 → 从 `now` 起算
+- `expires_at` 未过期 → 从 `expires_at` 续加（不吞剩余时长）
+
+---
+
+## 14.6 /home 有效期拦截逻辑
+
+进入 `/home` 前检查 `users.expires_at`：
+
+- 状态"未开通"或"已到期" → 渲染 `account_expired.html`，展示充值引导（复用 `system_notice.md` 内容）
+- 状态"有效中" → 正常进入主页
+
+用户在拦截页能看到：充值价格说明、收款二维码、账号 ID 提示。
+
+---
+
+## 14.7 注意事项
+
+- 新用户创建后 `expires_at` 默认 `NULL`，必须手动为其续费才能进入主页
+- GeorgeJi 账号本身也受有效期校验约束（若要免检，可为其设置一个很远的 expires_at）
+- 续费逻辑核心在 `services/user_expiry_service.py:calculate_new_expiry()`，改规则只改这里
